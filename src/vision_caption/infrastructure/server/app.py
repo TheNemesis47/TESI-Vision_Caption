@@ -69,9 +69,11 @@ def create_app() -> FastAPI:
         # Inizializzazione SSIM e RF-DETR
         ssim_detector = SsimSceneDetectorAdapter(threshold=0.85)
         
-        logger.info("Loading RF-DETR model weights...")
+        # Permettiamo di selezionare il device (cpu, cuda) per supportare hardware AMD/CPU
+        device = os.environ.get("DEVICE", "cuda")
+        logger.info(f"Loading RF-DETR model weights on device: {device}...")
         from rfdetr import RFDETRMedium
-        rfdetr_model = RFDETRMedium()
+        rfdetr_model = RFDETRMedium(device=device)
         rfdetr_detector = RfdetrSceneDetectorAdapter(model=rfdetr_model)
         
         # Rilevatore Ibrido
