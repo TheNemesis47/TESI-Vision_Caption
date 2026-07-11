@@ -16,6 +16,7 @@ class PointingCoordinates(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 class Frame(BaseModel):
+    frame_id: int = 0
     image_format: Format = Format.JPEG
     image_bytes: bytes
     caption_mode: CaptionMode

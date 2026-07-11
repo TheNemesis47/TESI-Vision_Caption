@@ -36,6 +36,10 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Application logs
+logs/
+*.log
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -111,3 +115,8 @@ env/
 graphify-out/
 .agents/
 .antigravitycli/
+
+# Model weights / checkpoints (too large for git)
+models/
+*.pth
+*.pt

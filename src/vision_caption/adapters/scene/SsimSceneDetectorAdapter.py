@@ -2,7 +2,6 @@ import time
 
 from skimage.metrics import structural_similarity as ssim
 import cv2
-import numpy as np
 
 from vision_caption.core.domain.frame import Frame
 from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
@@ -12,23 +11,28 @@ class SsimSceneDetectorAdapter:
         self.threshold = threshold
         self.old_img: cv2.typing.MatLike = None
 
-    async def analyze(self, new_frame: Frame) -> SceneAnalysisResult:
+    async def analyze(self, img: cv2.Mat) -> SceneAnalysisResult:
         t0 = time.perf_counter()
-        new_nparr = np.frombuffer(new_frame.image_bytes, dtype=np.uint8)
-        new_img = cv2.imdecode(new_nparr, cv2.IMREAD_GRAYSCALE)
 
         # controllo se il vecchio frame c'e', in caso negativo vuol dire che e' il primo frame
         if self.old_img is None:
             # aggiorno l old img
-            self.old_img = new_img
+            self.old_img = img
             return SceneAnalysisResult(
                 is_change=True
             )
 
-        ssim_result: float = ssim(self.old_img, new_img)
+        # Se le dimensioni sono diverse, è sicuramente un cambio scena totale
+        if self.old_img.shape != img.shape:
+            self.old_img = img
+            return SceneAnalysisResult(
+                is_change=True,
+                ssim_score=0.0, # Punteggio fittizio per indicare un cambio totale
+                execution_ms=(time.perf_counter() - t0) * 1000
+            )
 
-        # aggiorno l old img
-        self.old_img = new_img
+        ssim_result: float = ssim(self.old_img, img)
+
         t1 = time.perf_counter()
         execution_time: float = t1 - t0
         if ssim_result < self.threshold:
@@ -42,3 +46,6 @@ class SsimSceneDetectorAdapter:
             ssim_score=ssim_result,
             execution_ms=execution_time
         )
+
+    async def update_old_image(self, img: cv2.Mat):
+        self.old_img = img

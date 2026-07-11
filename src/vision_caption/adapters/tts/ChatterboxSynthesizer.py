@@ -15,7 +15,7 @@ class ChatterboxSynthesizer(SpeechSynthesizerPort):
         payload = {
             "input": text,
             "voice": "alloy",
-            "response_format": "wav",
+            "response_format": "mp3",
             "speed": 1.0,
             "exaggeration": 0.7,
             "cfg_weight": 0.4,
@@ -24,24 +24,16 @@ class ChatterboxSynthesizer(SpeechSynthesizerPort):
         
         # Inviamo la richiesta POST asincrona
         async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=30.0)
+            response = await client.post(url, json=payload, timeout=120.0)
             response.raise_for_status()
             audio_bytes = response.content
 
-        # Calcoliamo la durata reale dell'audio leggendo i metadati del formato WAV
-        duration = 0.0
-        try:
-            with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
-                frames = wav_file.getnframes()
-                rate = wav_file.getframerate()
-                if rate > 0:
-                    duration = frames / float(rate)
-        except Exception:
-            # Fallback se i byte ricevuti non sono un WAV valido o fallisce la lettura
-            duration = 0.0
+        # Calcoliamo una durata approssimativa visto che non usiamo più wave
+        # Assumiamo circa 15 caratteri al secondo come media di lettura
+        duration = len(text) / 15.0
 
         return Audio(
-            audio_format=AudioFormat.WAV,
+            audio_format=AudioFormat.MP3,
             audio_bytes=audio_bytes,
             audio_duration=duration
         )

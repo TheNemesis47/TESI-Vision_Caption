@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 class AudioFormat(str, Enum):
     WAV = "wav"
     OPUS = "opus"
+    MP3 = "mp3"
 
 class Audio(BaseModel):
     audio_format: AudioFormat
