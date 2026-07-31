@@ -116,6 +116,14 @@ graphify-out/
 .agents/
 .antigravitycli/
 
+# Secrets / credentials (NEVER commit)
+.env
+.env.*
+!.env.example
+*.pem
+cert.pem
+key.pem
+
 # Model weights / checkpoints (too large for git)
 models/
 *.pth
