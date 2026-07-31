@@ -1,8 +1,8 @@
-import os
 import sys
 import logging
 import uvicorn
 from loguru import logger
+from vision_caption.infrastructure.settings import AppSettings, ServerSettings
 from vision_caption.infrastructure.server.app import create_app
 
 
@@ -43,61 +43,71 @@ def _intercept_stdlib_logging():
         lib_logger.propagate = False
 
 
-def _setup_file_logging():
+def _setup_file_logging(settings: ServerSettings):
     """Aggiunge un sink su file nella cartella logs/ (oltre alla console).
 
     - Ruota il file quando supera i 10 MB.
     - Conserva gli ultimi 10 giorni di log, comprimendo i vecchi in .zip.
-    Percorso configurabile via env var LOG_DIR (default: ./logs).
+    Il percorso e il livello arrivano dalla configurazione centralizzata.
     """
-    log_dir = os.environ.get("LOG_DIR", "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    log_path = os.path.join(log_dir, "vision_caption_{time:YYYY-MM-DD}.log")
+    settings.log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = settings.log_dir / "vision_caption_{time:YYYY-MM-DD}.log"
     logger.add(
-        log_path,
+        str(log_path),
         rotation="10 MB",
         retention="10 days",
         compression="zip",
-        level=os.environ.get("LOG_LEVEL", "DEBUG"),
+        level=settings.log_level,
         enqueue=True,  # thread/async-safe
         backtrace=True,
         diagnose=True,
     )
-    logger.info(f"File logging enabled. Writing logs to: {os.path.abspath(log_dir)}")
+    logger.info(
+        f"File logging enabled. Writing logs to: "
+        f"{settings.log_dir.resolve()}"
+    )
 
 
 def main():
-    _setup_file_logging()
+    settings = AppSettings.from_env()
+    _setup_file_logging(settings.server)
     _intercept_stdlib_logging()
     logger.info("Initializing Vision Caption Server Application...")
-    app = create_app()
-    
-    ssl_key = "key.pem"
-    ssl_cert = "cert.pem"
-    
-    if os.path.exists(ssl_key) and os.path.exists(ssl_cert):
-        logger.info(f"SSL certificates found ({ssl_key}, {ssl_cert}). Starting uvicorn server on https://0.0.0.0:8765 (WSS enabled)...")
+    app = create_app(settings)
+
+    server = settings.server
+    ssl_key = server.ssl_key_path
+    ssl_cert = server.ssl_cert_path
+
+    common_options = {
+        "host": server.host,
+        "port": server.port,
+        "ws_ping_interval": server.websocket_ping_interval_seconds,
+        "ws_ping_timeout": server.websocket_ping_timeout_seconds,
+        "log_config": None,
+        "access_log": True,
+    }
+
+    if ssl_key.exists() and ssl_cert.exists():
+        logger.info(
+            f"SSL certificates found ({ssl_key}, {ssl_cert}). "
+            f"Starting uvicorn server on https://{server.host}:{server.port} "
+            f"(WSS enabled)..."
+        )
         uvicorn.run(
             app,
-            host="0.0.0.0",
-            port=8765,
-            ws_ping_interval=300.0,
-            ws_ping_timeout=300.0,
-            ssl_keyfile=ssl_key,
-            ssl_certfile=ssl_cert,
-            log_config=None,  # usa i nostri sink loguru invece di riconfigurare
-            access_log=True,
+            **common_options,
+            ssl_keyfile=str(ssl_key),
+            ssl_certfile=str(ssl_cert),
         )
     else:
-        logger.info("Starting uvicorn server on http://0.0.0.0:8765...")
+        logger.info(
+            f"Starting uvicorn server on "
+            f"http://{server.host}:{server.port}..."
+        )
         uvicorn.run(
             app,
-            host="0.0.0.0",
-            port=8765,
-            ws_ping_interval=300.0,
-            ws_ping_timeout=300.0,
-            log_config=None,  # usa i nostri sink loguru invece di riconfigurare
-            access_log=True,
+            **common_options,
         )
 
 if __name__ == '__main__':

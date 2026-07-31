@@ -4,11 +4,18 @@ from vision_caption.core.ports.SpeechSynthesizerPort import SpeechSynthesizerPor
 from vision_caption.core.domain.audio import Audio, AudioFormat
 
 class ElevenLabsSynthesizer(SpeechSynthesizerPort):
-    def __init__(self, api_key: str, voice_id: str = "21m00Tcm4TlvDq8ikWAM", model_id: str = "eleven_turbo_v2_5"):
+    def __init__(
+        self,
+        api_key: str,
+        voice_id: str = "21m00Tcm4TlvDq8ikWAM",
+        model_id: str = "eleven_turbo_v2_5",
+        timeout_seconds: float = 10.0,
+    ):
         # "eleven_turbo_v2_5" è il modello a bassissima latenza (~250ms) che supporta 32 lingue incluso l'Italiano.
         self._api_key = api_key
         self._voice_id = voice_id
         self._model_id = model_id
+        self._timeout_seconds = timeout_seconds
         self._base_url = "https://api.elevenlabs.io/v1/text-to-speech"
         
     async def synthesize(self, text: str, language: str = "it") -> Audio:
@@ -25,7 +32,12 @@ class ElevenLabsSynthesizer(SpeechSynthesizerPort):
         
         async with httpx.AsyncClient() as client:
             # Tempo di timeout breve, ElevenLabs deve rispondere quasi istantaneamente
-            response = await client.post(url, headers=headers, json=payload, timeout=10.0)
+            response = await client.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=self._timeout_seconds,
+            )
             
             if response.status_code != 200:
                 logger.error(f"ElevenLabs API Error: {response.text}")

@@ -1,0 +1,142 @@
+\chapter{Introduzione}
+\label{cap:introduzione}
+
+\section{Contesto e motivazione}
+
+La vista consente di acquisire rapidamente una grande quantità di informazioni
+sull'ambiente circostante: permette di riconoscere oggetti e persone,
+interpretare segnali ed etichette, leggere testi e comprendere la disposizione
+degli elementi nello spazio. Quando questa capacità è ridotta o assente,
+l'accesso a tali informazioni può richiedere strumenti assistivi oppure il
+supporto di altre persone.
+
+La disabilità visiva comprende condizioni differenti e non corrisponde a
+un'unica esperienza percettiva. Può interessare la visione da vicino o da
+lontano e presentarsi con livelli diversi di gravità. Alcune persone conservano
+una capacità visiva parziale, mentre altre non possono utilizzare la vista per
+accedere alle informazioni presenti nell'ambiente. Con il termine
+\emph{ipovisione} si indica, in questo lavoro, una condizione nella quale è
+presente un residuo visivo, ma la percezione disponibile può non essere
+sufficiente per riconoscere con affidabilità dettagli, testi o oggetti in ogni
+condizione. Anche fattori come illuminazione, contrasto e organizzazione dello
+spazio possono influire sull'autonomia nelle attività quotidiane. Secondo
+l'Organizzazione Mondiale della Sanità, almeno 2,2 miliardi di persone nel
+mondo presentano una compromissione della visione da vicino o da lontano
+\cite{who_blindness_vision_impairment_2026}.
+
+In questo contesto, le tecnologie assistive possono contribuire a rendere
+accessibili attraverso il canale uditivo informazioni originariamente
+disponibili soltanto in forma visiva. I progressi nella computer vision, nei
+modelli visivo-linguistici e nella sintesi vocale rendono oggi possibile
+analizzare un'immagine, produrne una descrizione testuale e convertirla in
+parlato. Affinché questo processo sia realmente utile, tuttavia, non è
+sufficiente generare una descrizione: occorre stabilire quando fornirla, quale
+elemento descrivere e come evitare informazioni ripetitive o poco pertinenti.
+
+% Qui puoi aggiungere, se lo desideri, una breve motivazione personale
+% che spieghi perché hai scelto questo specifico problema di tesi.
+
+\section{Problema di ricerca}
+
+L'ambiente quotidiano è dinamico e contiene una quantità elevata di
+informazioni visive. Una descrizione continua e indiscriminata rischierebbe di
+sovraccaricare l'utente, sovrapporre più messaggi vocali e ripetere contenuti
+già comunicati. Al contrario, un sistema attivabile soltanto mediante comandi
+espliciti richiederebbe all'utente di formulare ogni volta una richiesta,
+anche quando avrebbe bisogno semplicemente di conoscere un cambiamento
+avvenuto nelle vicinanze.
+
+Si presenta quindi la necessità di conciliare due esigenze complementari:
+mantenere una consapevolezza generale di ciò che accade nell'ambiente e
+consentire all'utente di richiedere informazioni mirate su un elemento
+specifico. Il sistema deve inoltre limitare la latenza, evitare descrizioni
+ridondanti e comunicare soltanto informazioni che possano essere formulate con
+un livello adeguato di affidabilità.
+
+La domanda che guida il presente lavoro può essere formulata nel modo
+seguente:
+
+\begin{quote}
+\emph{È possibile realizzare un sistema browser-based che fornisca
+descrizioni vocali contestuali, sia automaticamente sia attraverso un gesto di
+puntamento, senza richiedere hardware proprietario?}
+\end{quote}
+
+\section{Obiettivi del progetto}
+
+L'obiettivo della tesi è la progettazione e lo sviluppo di VisionCaption, un
+sistema di visione assistita rivolto a persone cieche e ipovedenti, capace di
+generare descrizioni vocali della scena osservata dalla fotocamera di un
+dispositivo. L'applicazione è concepita per funzionare tramite browser, così da
+poter essere utilizzata su dispositivi comuni, come computer, smartphone e
+tablet, senza dipendere da uno specifico visore o da sensori proprietari.
+
+Le descrizioni devono essere brevi, comprensibili e formulate in lingua
+italiana. L'obiettivo non è sostituire gli ausili tradizionali per
+l'orientamento e la mobilità, né realizzare un dispositivo medico, ma fornire
+un ulteriore canale di accesso alle informazioni visive. Il sistema è quindi
+pensato come supporto alla comprensione del contesto e non come fonte unica
+sulla quale basare decisioni relative alla sicurezza personale.
+
+Per rispondere a esigenze differenti, VisionCaption prevede due modalità di
+interazione: una modalità automatica, orientata alla consapevolezza generale
+dell'ambiente, e una modalità di puntamento, destinata all'esplorazione
+intenzionale di un oggetto.
+
+\section{Modalità di interazione}
+
+\subsection{Modalità automatica}
+
+La modalità automatica non richiede un intervento esplicito da parte
+dell'utente. Il sistema osserva il flusso proveniente dalla fotocamera e produce
+una nuova descrizione quando rileva un cambiamento sufficientemente rilevante
+nella scena. In questo modo l'utente può ricevere informazioni su ciò che lo
+circonda durante le normali attività quotidiane, evitando che una scena
+sostanzialmente invariata generi continuamente la stessa caption.
+
+Questa modalità privilegia quindi la continuità dell'assistenza, ma deve
+mantenere un equilibrio tra tempestività e quantità delle informazioni. Una
+frequenza eccessiva renderebbe infatti l'audio invasivo, mentre una frequenza
+troppo bassa potrebbe omettere cambiamenti utili.
+
+\subsection{Modalità di puntamento}
+
+La modalità di puntamento offre un'interazione più intenzionale. L'utente può
+indicare con il dito l'elemento sul quale desidera ricevere informazioni,
+senza dover formulare verbalmente una domanda o selezionare manualmente una
+regione dello schermo. Il sistema riconosce una posa di puntamento mantenuta in
+modo stabile, interpreta la direzione indicata e genera una descrizione
+specifica del possibile referente.
+
+Questa modalità può essere impiegata, ad esempio, per conoscere la natura di
+un oggetto, distinguerlo dagli elementi vicini oppure leggere il testo visibile
+su un'etichetta o una confezione. Il gesto deittico costituisce così un
+collegamento diretto tra l'intenzione dell'utente e la porzione di ambiente da
+descrivere.
+
+\section{Contributo del lavoro}
+
+Il contributo del progetto non consiste nella definizione di un nuovo modello
+fondazionale di intelligenza artificiale, ma nell'integrazione di tecniche di
+visione artificiale, modelli multimodali e sintesi vocale all'interno di
+un'unica esperienza assistiva. L'aspetto centrale è la coesistenza di due
+strategie complementari: una descrizione automatica sensibile ai cambiamenti
+della scena e una descrizione attivata da un gesto naturale di puntamento.
+
+La scelta di un'interfaccia browser-based mira inoltre a ridurre la dipendenza
+da piattaforme e dispositivi specifici. Il lavoro affronta pertanto non solo il
+riconoscimento del contenuto visivo, ma anche problemi legati alla selezione
+dell'informazione, alla latenza, alla ripetizione delle caption e alla
+semplicità dell'interazione.
+
+\section{Organizzazione della tesi}
+
+Il presente capitolo introduce il contesto, il problema e gli obiettivi del
+lavoro. Il Capitolo~\ref{cap:tecnologie} presenta le principali tecnologie
+utilizzate, mentre il capitolo dedicato allo stato dell'arte confronta
+VisionCaption con le soluzioni assistive esistenti. I capitoli successivi
+descrivono la progettazione del sistema, le scelte implementative e la
+valutazione dei risultati ottenuti.
+
+% Aggiorna l'ultimo periodo quando l'indice definitivo dei capitoli sarà
+% stabilito, indicando esplicitamente il contenuto di ciascun capitolo.

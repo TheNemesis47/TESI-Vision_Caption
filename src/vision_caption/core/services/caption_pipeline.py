@@ -1,7 +1,5 @@
-import os
 import time
 import asyncio
-import difflib
 from datetime import datetime
 from difflib import SequenceMatcher
 
@@ -11,16 +9,10 @@ from vision_caption.core.ports.CaptionGeneratorPort import CaptionGeneratorPort
 from vision_caption.core.ports.SpeechSynthesizerPort import SpeechSynthesizerPort
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.domain.frame import Frame, CaptionMode
-from vision_caption.core.domain.audio import Audio
 from vision_caption.core.domain.captionResult import CaptionResult
-
-# --- Soglie di FRESHNESS (configurabili via env) ---
-# Età massima di un frame (in secondi) misurata lato server: oltre questa soglia
-# caption/audio sono considerati obsoleti e non vengono sintetizzati/inviati.
-MAX_FRAME_AGE_S = float(os.environ.get("MAX_FRAME_AGE_S", "3.0"))
-# Timeout massimo di attesa per un chunk dal VLM: evita caption che restano
-# appese 10s bloccando la pipeline.
-VLM_TIMEOUT_S = float(os.environ.get("VLM_TIMEOUT_S", "3.0"))
+from vision_caption.core.services.pointing.pointing_pipeline import (
+    PointingPipeline,
+)
 
 class CaptionPipeline:
     def __init__(
@@ -28,40 +20,52 @@ class CaptionPipeline:
         scene_detector: SceneDetectorPort,
         caption_generator: CaptionGeneratorPort,
         speech_synthesizer: SpeechSynthesizerPort,
-        rate_limiter: RateLimiter
+        rate_limiter: RateLimiter,
+        pointing_pipeline: PointingPipeline | None = None,
+        max_frame_age_seconds: float = 3.0,
+        vlm_chunk_timeout_seconds: float = 3.0,
+        caption_similarity_threshold: float = 0.85,
     ):
         self._scene_detector = scene_detector
         self._caption_generator = caption_generator
         self._speech_synthesizer = speech_synthesizer
         self._rate_limiter = rate_limiter
+        self._pointing_pipeline = pointing_pipeline
+        self._max_frame_age_seconds = max_frame_age_seconds
+        self._vlm_chunk_timeout_seconds = vlm_chunk_timeout_seconds
+        self._caption_similarity_threshold = caption_similarity_threshold
         self._last_caption = ""
+        self._last_mode: CaptionMode | None = None
 
-    async def process(self, frame: Frame, on_detections=None):
-        t_start = time.perf_counter()
-        
-        #t 1. Se siamo in modalità manuale (POINTING), bypassiamo SSIM e Rae Limiter
+    async def process(
+        self,
+        frame: Frame,
+        on_detections=None,
+        on_pointing_overlay=None,
+    ):
+        previous_mode = self._last_mode
+        if previous_mode is not None and frame.caption_mode != previous_mode:
+            if self._pointing_pipeline is not None:
+                self._pointing_pipeline.reset()
+        self._last_mode = frame.caption_mode
+
+        # 1. POINTING usa esclusivamente la pipeline a innesco gestuale.
         if frame.caption_mode == CaptionMode.POINTING:
-            logger.info("Processing manual POINTING frame...")
-            
-            logger.info("Calling VLM Caption Generator...")
-            caption_text = ""
-            async for frase in self._caption_generator.generate(frame):
-                if not frase:
-                    continue
-                logger.info(f"VLM Chunk generated: \"{frase}\"")
-                caption_text += frase
-
-                logger.info("Calling TTS Speech Synthesizer...")
-                t_tts_start = time.perf_counter()
-                audio_result = await self._speech_synthesizer.synthesize(frase)
-                t_tts_end = time.perf_counter()
-                logger.info(f"TTS Speech synthesized in {t_tts_end - t_tts_start:.2f}s (Audio duration: {audio_result.audio_duration:.2f}s)")
-                yield CaptionResult(frame_id=frame.frame_id, caption=frase, audio=audio_result)
-
-            logger.info(f"Total POINTING frame processing time: {time.perf_counter() - t_start:.2f}s")
-            yield CaptionResult(frame_id=frame.frame_id, caption=caption_text, audio=audio_result)
+            if self._pointing_pipeline is None:
+                logger.warning(
+                    "Frame POINTING ignorato: pipeline POINTING non configurata."
+                )
+                return
+            async for result in self._pointing_pipeline.process(
+                frame,
+                on_overlay=on_pointing_overlay,
+            ):
+                yield result
             return
-            
+
+        if previous_mode == CaptionMode.POINTING and on_pointing_overlay:
+            await on_pointing_overlay((), frame.frame_id)
+
         # 2. Altrimenti (modalità AUTO), eseguiamo i controlli a cascata
         # Analizziamo la scena per rilevare cambiamenti
         logger.debug("Analyzing scene for changes...")
@@ -95,10 +99,10 @@ class CaptionPipeline:
 
         # FRESHNESS GUARD (pre-VLM): se il frame è già vecchio prima ancora di
         # iniziare, non ha senso spendere VLM+TTS su una scena superata.
-        if frame_age() > MAX_FRAME_AGE_S:
+        if frame_age() > self._max_frame_age_seconds:
             logger.warning(
                 f"Frame {frame.frame_id} già obsoleto ({frame_age():.2f}s > "
-                f"{MAX_FRAME_AGE_S}s) prima del VLM. Pipeline saltata."
+                f"{self._max_frame_age_seconds}s) prima del VLM. Pipeline saltata."
             )
             return
 
@@ -108,17 +112,22 @@ class CaptionPipeline:
 
 
         # Iteriamo manualmente sul generatore per poter imporre un TIMEOUT VLM
-        # su ogni chunk: se un chunk non arriva entro VLM_TIMEOUT_S, abortiamo.
+        # su ogni chunk: se un chunk non arriva entro il timeout configurato,
+        # abortiamo.
         agen = self._caption_generator.generate(frame)
         try:
             while True:
                 try:
-                    chunk_text = await asyncio.wait_for(agen.__anext__(), timeout=VLM_TIMEOUT_S)
+                    chunk_text = await asyncio.wait_for(
+                        agen.__anext__(),
+                        timeout=self._vlm_chunk_timeout_seconds,
+                    )
                 except StopAsyncIteration:
                     break
                 except asyncio.TimeoutError:
                     logger.warning(
-                        f"VLM timeout ({VLM_TIMEOUT_S}s) sul frame {frame.frame_id}. "
+                        f"VLM timeout ({self._vlm_chunk_timeout_seconds}s) "
+                        f"sul frame {frame.frame_id}. "
                         f"Caption abortita per non bloccare la pipeline."
                     )
                     break
@@ -128,7 +137,7 @@ class CaptionPipeline:
 
                 # FRESHNESS GUARD (pre-TTS): non sintetizziamo audio per una scena
                 # ormai superata (es. VLM lento cumulativo).
-                if frame_age() > MAX_FRAME_AGE_S:
+                if frame_age() > self._max_frame_age_seconds:
                     logger.warning(
                         f"Frame {frame.frame_id} obsoleto ({frame_age():.2f}s) prima del TTS. "
                         f"Chunk scartato e pipeline interrotta."
@@ -137,7 +146,7 @@ class CaptionPipeline:
 
                 # Controllo di similarità sul singolo chunk
                 caption_difference = SequenceMatcher(None, self._last_caption, chunk_text).ratio()
-                if caption_difference > 0.85:
+                if caption_difference > self._caption_similarity_threshold:
                     logger.info(f"Chunk '{chunk_text}' is too similar to the previous one, skipping.")
                     continue
 
@@ -151,7 +160,7 @@ class CaptionPipeline:
 
                 # FRESHNESS GUARD (post-TTS): il TTS potrebbe aver spinto il frame
                 # oltre soglia. Non inviamo audio obsoleto (caso frame_id=119).
-                if frame_age() > MAX_FRAME_AGE_S:
+                if frame_age() > self._max_frame_age_seconds:
                     logger.warning(
                         f"Audio del frame {frame.frame_id} obsoleto ({frame_age():.2f}s) "
                         f"dopo il TTS. Scartato invece di essere inviato."
@@ -165,3 +174,6 @@ class CaptionPipeline:
 
         logger.info(f"Total AUTO streaming frame processing completed.")
 
+    async def close(self) -> None:
+        if self._pointing_pipeline is not None:
+            await self._pointing_pipeline.close()

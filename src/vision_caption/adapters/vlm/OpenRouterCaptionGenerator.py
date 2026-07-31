@@ -6,14 +6,20 @@ from vision_caption.core.ports.CaptionGeneratorPort import CaptionGeneratorPort
 
 class OpenRouterCaptionGenerator(CaptionGeneratorPort):
     def __init__(
-        self, 
-        api_key: str, 
+        self,
+        api_key: str,
         model_name: str = "google/gemini-2.5-flash",
-        base_url: str = "https://openrouter.ai/api/v1"
+        base_url: str = "https://openrouter.ai/api/v1",
+        max_tokens: int = 80,
+        temperature: float = 0.1,
+        timeout_seconds: float = 120.0,
     ):
         self._api_key = api_key
         self._model_name = model_name
         self._base_url = base_url
+        self._max_tokens = max_tokens
+        self._temperature = temperature
+        self._timeout_seconds = timeout_seconds
 
     async def generate(self, frame: Frame):
         # Convertiamo i byte JPEG in formato Base64 per la trasmissione HTTP
@@ -57,15 +63,21 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
                     ]
                 }
             ],
-            "max_tokens": 80,
-            "temperature": 0.1
+            "max_tokens": self._max_tokens,
+            "temperature": self._temperature,
         }
 
         payload["stream"] = True
         
         async with httpx.AsyncClient() as client:
             # Apriamo uno stream continuo con .stream()
-            async with client.stream("POST", url, headers=headers, json=payload, timeout=120.0) as response:
+            async with client.stream(
+                "POST",
+                url,
+                headers=headers,
+                json=payload,
+                timeout=self._timeout_seconds,
+            ) as response:
                 response.raise_for_status()
                 
                 buffer = ""

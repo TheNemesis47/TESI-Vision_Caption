@@ -1,0 +1,120 @@
+% Capitolo autonomo di approfondimento.
+% Non è incluso in main.tex, così non altera la struttura assegnata alla tesi.
+
+\chapter{Approfondimento sullo Structural Similarity Index Measure}
+\label{cap:approfondimento-ssim}
+
+\section{Principio di funzionamento}
+
+Lo Structural Similarity Index Measure (SSIM) è una metrica progettata per
+confrontare due immagini tenendo conto di caratteristiche legate alla
+percezione visiva. A differenza di una semplice differenza calcolata pixel per
+pixel, SSIM considera tre componenti: luminanza, contrasto e struttura.
+
+Date due porzioni di immagine \(x\) e \(y\), una forma compatta della metrica è:
+
+\begin{equation}
+    \operatorname{SSIM}(x,y)=
+    \frac{(2\mu_x\mu_y+C_1)(2\sigma_{xy}+C_2)}
+    {(\mu_x^2+\mu_y^2+C_1)(\sigma_x^2+\sigma_y^2+C_2)} ,
+    \label{eq:ssim}
+\end{equation}
+
+dove \(\mu_x\) e \(\mu_y\) rappresentano le medie dei valori dei pixel,
+\(\sigma_x^2\) e \(\sigma_y^2\) le rispettive varianze e \(\sigma_{xy}\) la
+covarianza tra le due porzioni. Le costanti \(C_1\) e \(C_2\) stabilizzano il
+calcolo quando i denominatori assumono valori molto piccoli.
+
+La metrica viene normalmente calcolata su finestre locali e i risultati sono
+poi aggregati per ottenere uno score complessivo. Il valore massimo è \(1\) e
+indica immagini identiche rispetto al confronto effettuato. Sebbene nei casi
+più comuni lo score osservato sia compreso tra \(0\) e \(1\), il suo intervallo
+teorico può includere anche valori negativi.
+
+\section{Confronto con le metriche pixel per pixel}
+
+Metriche come il Mean Squared Error misurano direttamente la distanza tra i
+valori dei pixel corrispondenti. Una piccola variazione di illuminazione, una
+sfocatura o uno spostamento della fotocamera possono quindi produrre una
+differenza numerica elevata anche quando il contenuto della scena è ancora
+riconoscibile.
+
+SSIM valuta invece la conservazione della struttura locale. Nell'esempio
+seguente, la seconda immagine contiene lo stesso soggetto della prima ma è
+sfocata: i valori dei singoli pixel cambiano, mentre gran parte della struttura
+visiva resta simile.
+
+\begin{center}
+    \begin{minipage}{0.75\linewidth}
+        \centering
+        \IfFileExists{Risorse/SSIM1.png}
+            {\includegraphics[width=\linewidth]{Risorse/SSIM1.png}}
+            {\fbox{\parbox[c][4cm][c]{0.9\linewidth}{
+                \centering Inserire qui il confronto tra l'immagine originale
+                e la versione sfocata.
+            }}}
+        \captionof{figure}{Confronto tra un'immagine originale e una sua
+        versione sfocata.}
+        \label{fig:ssim-originale-sfocata}
+    \end{minipage}
+\end{center}
+
+Lo score non stabilisce quale delle due immagini sia migliore e non riconosce
+gli oggetti rappresentati. Esprime soltanto quanto le loro strutture visive
+siano simili secondo la metrica.
+
+\begin{center}
+    \begin{minipage}{0.75\linewidth}
+        \centering
+        \IfFileExists{Risorse/SSIM2.png}
+            {\includegraphics[width=\linewidth]{Risorse/SSIM2.png}}
+            {\fbox{\parbox[c][4cm][c]{0.9\linewidth}{
+                \centering Inserire qui l'esempio degli score ottenuti dal
+                confronto.
+            }}}
+        \captionof{figure}{Esempio di interpretazione dello score SSIM.}
+        \label{fig:ssim-confronto-score}
+    \end{minipage}
+\end{center}
+
+\section{Impiego nel progetto}
+
+Nella modalità automatica di VisionCaption, SSIM viene usato come primo livello
+di selezione dei frame. Il sistema confronta il frame corrente con un frame di
+riferimento per stimare se la scena sia cambiata in misura sufficiente da
+giustificare una nuova elaborazione.
+
+Se la somiglianza rimane sopra la soglia configurata, il frame può essere
+scartato senza richiedere nuovamente le fasi più costose della pipeline. Se la
+somiglianza scende sotto la soglia, il sistema prosegue con i controlli
+successivi, tra cui il rilevamento degli oggetti. In questo modo si evita, per
+esempio, di generare ripetutamente la stessa descrizione mentre l'utente
+inquadra per diversi secondi una scena sostanzialmente immobile.
+
+Il costo del confronto cresce linearmente rispetto al numero di pixel
+analizzati, cioè è approssimativamente \(\mathcal{O}(n)\). Questa caratteristica
+lo rende adatto a fungere da filtro leggero prima dei modelli di visione più
+onerosi.
+
+\section{Limiti e integrazione con il rilevamento semantico}
+
+SSIM individua una variazione visiva, ma non ne comprende il significato. Un
+movimento della fotocamera, un cambiamento di luminosità, una sfocatura o
+un'occlusione temporanea possono ridurre lo score senza che nella scena sia
+comparso un elemento realmente importante. Al contrario, una variazione
+semanticamente rilevante ma circoscritta a una piccola area potrebbe produrre
+solo una modifica limitata dello score complessivo.
+
+La soglia deve quindi essere scelta sperimentalmente in relazione alla
+risoluzione dei frame e alle condizioni d'uso; non esiste un valore universale
+adatto a ogni situazione. Anche la scelta del frame di riferimento è
+significativa: il confronto con il frame precedente è sensibile ai cambiamenti
+graduali, mentre il confronto con un frame chiave può accumulare nel tempo
+piccole variazioni.
+
+Per questi motivi, nel progetto SSIM non è impiegato come unico criterio
+decisionale. La strategia ibrida lo combina con il rilevamento degli oggetti:
+SSIM fornisce un'indicazione rapida del cambiamento visivo, mentre il rilevatore
+aggiunge informazioni sul contenuto della scena. La combinazione riduce sia le
+caption ridondanti sia le attivazioni causate da variazioni prive di interesse
+semantico.

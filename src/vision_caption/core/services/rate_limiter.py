@@ -2,7 +2,7 @@ import time
 
 
 class RateLimiter:
-    def __init__(self, min_interval_seconds: int = 5):
+    def __init__(self, min_interval_seconds: float = 5.0):
         self.min_interval_seconds = min_interval_seconds
         self._last_executed_time = None
 

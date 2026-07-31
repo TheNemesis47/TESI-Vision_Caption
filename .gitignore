@@ -40,6 +40,9 @@ pip-delete-this-directory.txt
 logs/
 *.log
 
+# Debug captures can contain personal camera images.
+artifacts/pointing_debug/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -115,6 +118,14 @@ env/
 graphify-out/
 .agents/
 .antigravitycli/
+
+# Local screenshots and benchmark captures. Keep them available locally,
+# but do not include them in the repository.
+scripts/*.[jJ][pP][gG]
+scripts/*.[jJ][pP][eE][gG]
+scripts/*.[pP][nN][gG]
+scripts/*.[gG][iI][fF]
+scripts/*.[wW][eE][bB][pP]
 
 # Secrets / credentials (NEVER commit)
 .env

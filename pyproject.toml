@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.136.1",
     "loguru>=0.7.3",
     "matplotlib>=3.10.9",
+    "mediapipe>=1.0.0",
     "opencv-contrib-python>=4.13.0.92",
     "pydantic>=2.13.4",
     "rfdetr>=1.7.0",
@@ -43,6 +44,12 @@ url = "https://download.pytorch.org/whl/rocm7.2"
 [[tool.uv.index]]
 name = "pytorch-base"
 url = "https://download.pytorch.org/whl/"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
 
 
 

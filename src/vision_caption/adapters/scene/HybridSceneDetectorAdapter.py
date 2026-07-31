@@ -10,9 +10,15 @@ from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
 
 
 class HybridSceneDetectorAdapter:
-    def __init__(self, ssim_detector: SsimSceneDetectorAdapter, rfdetr_detector: RfdetrSceneDetectorAdapter):
+    def __init__(
+        self,
+        ssim_detector: SsimSceneDetectorAdapter,
+        rfdetr_detector: RfdetrSceneDetectorAdapter,
+        suppress_unchanged_class_counts: bool = True,
+    ):
         self._ssim_detector = ssim_detector
         self._rfdetr_detector = rfdetr_detector
+        self._suppress_unchanged_class_counts = suppress_unchanged_class_counts
         # STATO: ricorda cosa c'era nell'ultimo frame cambiato
         self._last_detected_objects: Counter[str] | None = None
         self._pending_img = None
@@ -44,7 +50,11 @@ class HybridSceneDetectorAdapter:
         
         # 5. Controllo di Identità Semantica
         # Se non è il primo frame e la lista degli oggetti è ESATTAMENTE UGUALE alla precedente
-        if self._last_detected_objects is not None and current_objects == self._last_detected_objects:
+        if (
+            self._suppress_unchanged_class_counts
+            and self._last_detected_objects is not None
+            and current_objects == self._last_detected_objects
+        ):
             logger.info(f"Semantic meaning is identical {dict(current_objects)}. Suppressing false positive! 🚫")
             return SceneAnalysisResult(
                 is_change=False,
