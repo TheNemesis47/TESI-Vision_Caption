@@ -51,6 +51,7 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
                                 "- Se non sei sicuro del tipo di un oggetto, usa un termine generico "
                                 "(es. 'occhiali' invece di 'occhiali da sole', 'accessorio al collo' invece di 'collare').\n"
                                 "- Se non riconosci con certezza l'ambiente, non nominarlo: descrivi solo gli elementi visibili.\n"
+                                "- Scrivi numeri, orari e date in lettere, nella forma in cui devono essere pronunciati in italiano.\n"
                                 "- Niente elenchi, markdown o intestazioni. Solo testo semplice in ITALIANO."
                             )
                         },
@@ -104,11 +105,6 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
                                     frammento = delta["content"]
 
                                     buffer += frammento
-
-                                    # CHUNKING
-                                    if "." in buffer or "," in buffer or "?" in buffer or "!" in buffer:
-                                        yield buffer.strip()
-                                        buffer = ""
                                     
                         except json.JSONDecodeError:
                             continue

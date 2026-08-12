@@ -42,6 +42,12 @@ def _intercept_stdlib_logging():
         lib_logger.handlers = [InterceptHandler()]
         lib_logger.propagate = False
 
+    # Queste librerie possono scrivere payload WebSocket Base64 e il trace di
+    # ogni richiesta HTTP. Sono utili soltanto in troubleshooting profondo e
+    # rendono i log di produzione enormi senza aggiungere segnali operativi.
+    for name in ("asyncio", "websockets", "httpcore", "httpx"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
 
 def _setup_file_logging(settings: ServerSettings):
     """Aggiunge un sink su file nella cartella logs/ (oltre alla console).

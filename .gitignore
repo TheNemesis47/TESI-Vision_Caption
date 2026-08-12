@@ -40,8 +40,8 @@ pip-delete-this-directory.txt
 logs/
 *.log
 
-# Debug captures can contain personal camera images.
-artifacts/pointing_debug/
+# Runtime artifacts can contain personal camera images.
+artifacts/
 
 # Unit test / coverage reports
 htmlcov/
@@ -114,10 +114,8 @@ env/
 *.swp
 *.swo
 
-# Project specific
-graphify-out/
-.agents/
-.antigravitycli/
+# Project-specific private files
+tesi/
 
 # Local screenshots and benchmark captures. Keep them available locally,
 # but do not include them in the repository.

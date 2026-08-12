@@ -7,6 +7,7 @@ from loguru import logger
 from vision_caption.core.ports.SceneDetectorPort import SceneDetectorPort
 from vision_caption.core.ports.CaptionGeneratorPort import CaptionGeneratorPort
 from vision_caption.core.ports.SpeechSynthesizerPort import SpeechSynthesizerPort
+from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.domain.frame import Frame, CaptionMode
 from vision_caption.core.domain.captionResult import CaptionResult
@@ -68,25 +69,42 @@ class CaptionPipeline:
 
         # 2. Altrimenti (modalità AUTO), eseguiamo i controlli a cascata
         # Analizziamo la scena per rilevare cambiamenti
+        metrics = FrameMetrics(frame_id=frame.frame_id)
+
         logger.debug("Analyzing scene for changes...")
         t_detect_start = time.perf_counter()
         scene_result = await self._scene_detector.analyze(frame)
-        # eseguo la callback
-        if on_detections:
-            await on_detections(scene_result.detections, frame.frame_id)
         t_detect_end = time.perf_counter()
-        logger.debug(f"Scene detection completed in {(t_detect_end - t_detect_start) * 1000:.1f}ms (SSIM score: {scene_result.ssim_score or 1.0:.3f})")
-        
+
+        metrics.detect_ms = round(
+            (t_detect_end - t_detect_start) * 1000.0,
+            1,
+        )
+        if on_detections:
+            await on_detections(
+                scene_result.detections,
+                frame.frame_id,
+            )
+        metrics.ssim_score = scene_result.ssim_score
+        metrics.detections = len(scene_result.detections)
+        logger.debug(
+            "Scene detection completed in "
+            f"{(t_detect_end - t_detect_start) * 1000:.1f}ms "
+            f"(SSIM score: {scene_result.ssim_score or 1.0:.3f})"
+        )
+
         if not scene_result.is_change:
+            metrics.emit(f"suppressed_{scene_result.suppressed_by or 'unknown'}")
             return
             
         # Verifichiamo se è trascorso l'intervallo minimo di rate limit
         if not self._rate_limiter.can_execute():
-            logger.info("Change detected, but rate limiter blocked execution (too frequent).")
+            logger.debug(
+                "Change detected, but rate limiter blocked execution "
+                "(too frequent)."
+            )
+            metrics.emit("rate_limited")
             return
-            
-        # Registriamo l'esecuzione corrente nel rate limiter
-        self._rate_limiter.record()
         
         logger.info("Significant scene change detected! Starting captioning pipeline...")
         if scene_result.detections:
@@ -104,10 +122,10 @@ class CaptionPipeline:
                 f"Frame {frame.frame_id} già obsoleto ({frame_age():.2f}s > "
                 f"{self._max_frame_age_seconds}s) prima del VLM. Pipeline saltata."
             )
+            metrics.emit("stale_pre_vlm")
             return
 
         # Chiamata al generatore di didascalie (passando il frame) IN STREAMING
-        await self._scene_detector.commit()
         logger.info("Calling VLM Caption Generator (Streaming)...")
 
 
@@ -115,6 +133,8 @@ class CaptionPipeline:
         # su ogni chunk: se un chunk non arriva entro il timeout configurato,
         # abortiamo.
         agen = self._caption_generator.generate(frame)
+        t_vlm_start = time.perf_counter()
+        outcome = "completed"
         try:
             while True:
                 try:
@@ -130,7 +150,13 @@ class CaptionPipeline:
                         f"sul frame {frame.frame_id}. "
                         f"Caption abortita per non bloccare la pipeline."
                     )
+                    outcome = "vlm_timeout"
                     break
+
+                if metrics.vlm_first_chunk_ms is None:
+                    metrics.vlm_first_chunk_ms = round(
+                        (time.perf_counter() - t_vlm_start) * 1000.0, 1
+                    )
 
                 if not chunk_text:
                     continue
@@ -142,21 +168,39 @@ class CaptionPipeline:
                         f"Frame {frame.frame_id} obsoleto ({frame_age():.2f}s) prima del TTS. "
                         f"Chunk scartato e pipeline interrotta."
                     )
+                    outcome = "stale_pre_tts"
                     break
 
-                # Controllo di similarità sul singolo chunk
-                caption_difference = SequenceMatcher(None, self._last_caption, chunk_text).ratio()
-                if caption_difference > self._caption_similarity_threshold:
-                    logger.info(f"Chunk '{chunk_text}' is too similar to the previous one, skipping.")
-                    continue
+                # Confronto tra caption complete, ignorando maiuscole, spazi e punteggiatura finale
+                previous_caption = " ".join(
+                    self._last_caption.casefold().split()
+                ).strip(".,!?;:")
 
-                self._last_caption = chunk_text
+                current_caption = " ".join(
+                    chunk_text.casefold().split()
+                ).strip(".,!?;:")
+
+                caption_similarity = SequenceMatcher(
+                    None,
+                    previous_caption,
+                    current_caption,
+                    autojunk=False,
+                ).ratio()
+
+                if caption_similarity >= self._caption_similarity_threshold:
+                    logger.info(
+                        f"Caption '{chunk_text}' troppo simile alla precedente "
+                        f"({caption_similarity:.3f}); saltata."
+                    )
+                    metrics.chunks_deduplicated += 1
+                    continue
 
                 # Sintesi vocale per il pezzettino
                 logger.info(f"Calling TTS for chunk: '{chunk_text}'")
                 t_tts_start = time.perf_counter()
                 audio_result = await self._speech_synthesizer.synthesize(chunk_text)
                 t_tts_end = time.perf_counter()
+                metrics.tts_ms.append(round((t_tts_end - t_tts_start) * 1000.0, 1))
 
                 # FRESHNESS GUARD (post-TTS): il TTS potrebbe aver spinto il frame
                 # oltre soglia. Non inviamo audio obsoleto (caso frame_id=119).
@@ -165,14 +209,36 @@ class CaptionPipeline:
                         f"Audio del frame {frame.frame_id} obsoleto ({frame_age():.2f}s) "
                         f"dopo il TTS. Scartato invece di essere inviato."
                     )
+                    outcome = "stale_post_tts"
                     break
+
+                if metrics.first_audio_ms is None:
+                    metrics.first_audio_ms = round(metrics.elapsed_ms(), 1)
+                    metrics.frame_age_at_first_audio_s = round(frame_age(), 3)
+
+                # Il cooldown e la baseline semantica rappresentano ciò che è
+                # stato davvero trasformato in audio. Timeout VLM, TTS falliti
+                # o frame ormai obsoleti non devono rendere muta la pipeline
+                # per i successivi cinque secondi.
+                if metrics.chunks_emitted == 0:
+                    await self._scene_detector.commit()
+                    self._rate_limiter.record()
+
+                self._last_caption = chunk_text
+                metrics.chunks_emitted += 1
 
                 # Invece di un return finale, facciamo lo yield per spedire il frammento audio!
                 yield CaptionResult(frame_id=frame.frame_id, caption=chunk_text, audio=audio_result)
         finally:
             await agen.aclose()
+            metrics.vlm_total_ms = round(
+                (time.perf_counter() - t_vlm_start) * 1000.0, 1
+            )
+            if outcome == "completed" and metrics.chunks_emitted == 0:
+                outcome = "no_audio"
+            metrics.emit(outcome)
 
-        logger.info(f"Total AUTO streaming frame processing completed.")
+        logger.info("Total AUTO streaming frame processing completed.")
 
     async def close(self) -> None:
         if self._pointing_pipeline is not None:

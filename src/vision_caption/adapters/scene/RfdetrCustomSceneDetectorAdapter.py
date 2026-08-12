@@ -118,6 +118,17 @@ class RfdetrCustomSceneDetectorAdapter:
             execution_ms=execution_time,
         )
 
+    def warm_up(self, width: int = 640, height: int = 480) -> None:
+        """Esegue la compilazione lazy prima che arrivi il primo utente."""
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        t0 = time.perf_counter()
+        self.model.predict(image, self.threshold)
+        logger.info(
+            "RF-DETR warm-up completed in "
+            f"{(time.perf_counter() - t0) * 1000.0:.1f}ms "
+            f"({width}x{height})."
+        )
+
     async def commit(self):
         # Questo detector è stateless: nessun keyframe/oggetto da confermare.
         ...

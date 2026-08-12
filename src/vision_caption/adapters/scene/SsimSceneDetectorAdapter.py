@@ -34,17 +34,17 @@ class SsimSceneDetectorAdapter:
         ssim_result: float = ssim(self.old_img, img)
 
         t1 = time.perf_counter()
-        execution_time: float = t1 - t0
+        execution_time_ms = (t1 - t0) * 1000.0
         if ssim_result < self.threshold:
             return SceneAnalysisResult(
                 is_change=True,
                 ssim_score=ssim_result,
-                execution_ms=execution_time
+                execution_ms=execution_time_ms,
             )
         return SceneAnalysisResult(
             is_change=False,
             ssim_score=ssim_result,
-            execution_ms=execution_time
+            execution_ms=execution_time_ms,
         )
 
     async def update_old_image(self, img: cv2.Mat):

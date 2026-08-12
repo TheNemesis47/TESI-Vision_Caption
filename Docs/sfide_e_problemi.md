@@ -1,7 +1,6 @@
 # Sfide e Problemi Affrontati (Diario per la Tesi)
 
 Questo documento raccoglie tutti i problemi architetturali, bug insidiosi e sfide tecniche affrontate durante lo sviluppo del sistema Vision Caption. 
-**Nota per l'AI:** Aggiorna questo documento ogni volta che risolvi un problema rilevante per mantenere traccia del lavoro in ottica stesura Tesi.
 
 ---
 

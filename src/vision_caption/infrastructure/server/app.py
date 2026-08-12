@@ -165,12 +165,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 threshold=settings.auto.rfdetr.confidence_threshold,
             )
 
+        if settings.auto.rfdetr.warmup_enabled:
+            logger.info("Warming up RF-DETR before accepting user frames...")
+            rfdetr_detector.warm_up(
+                width=settings.auto.rfdetr.warmup_width,
+                height=settings.auto.rfdetr.warmup_height,
+            )
+
         # Rilevatore Ibrido
         scene_detector = HybridSceneDetectorAdapter(
             ssim_detector=ssim_detector,
             rfdetr_detector=rfdetr_detector,
             suppress_unchanged_class_counts=(
                 settings.auto.suppress_unchanged_class_counts
+            ),
+            semantic_box_iou_threshold=(
+                settings.auto.semantic_box_iou_threshold
             ),
         )
         

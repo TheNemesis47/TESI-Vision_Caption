@@ -27,6 +27,12 @@ class ServerSettings(SettingsModel):
     ssl_cert_path: Path = Path("cert.pem")
     log_dir: Path = Path("logs")
     log_level: str = "DEBUG"
+    auto_input_fps: float = Field(default=2.0, gt=0.0)
+    pointing_input_fps: float = Field(default=10.0, gt=0.0)
+    websocket_optional_send_timeout_seconds: float = Field(
+        default=0.25,
+        gt=0.0,
+    )
 
 
 class RuntimeSettings(SettingsModel):
@@ -63,6 +69,9 @@ class RfDetrSettings(SettingsModel):
     confidence_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
     custom_confidence_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     optimize_for_inference: bool = True
+    warmup_enabled: bool = True
+    warmup_width: int = Field(default=640, ge=1)
+    warmup_height: int = Field(default=480, ge=1)
 
 
 class AutoVlmSettings(SettingsModel):
@@ -80,6 +89,7 @@ class AutoCaptionSettings(SettingsModel):
     max_frame_age_seconds: float = Field(default=3.0, gt=0.0)
     caption_similarity_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     suppress_unchanged_class_counts: bool = True
+    semantic_box_iou_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
 
 
 class MediaPipeSettings(SettingsModel):
@@ -212,6 +222,12 @@ class AppSettings(SettingsModel):
                     "WS_DRAIN_TIMEOUT_SECONDS",
                     0.005,
                 ),
+                auto_input_fps=value("AUTO_INPUT_FPS", 2.0),
+                pointing_input_fps=value("POINTING_INPUT_FPS", 10.0),
+                websocket_optional_send_timeout_seconds=value(
+                    "WS_OPTIONAL_SEND_TIMEOUT_SECONDS",
+                    0.25,
+                ),
                 ssl_key_path=value("SSL_KEY_PATH", "key.pem"),
                 ssl_cert_path=value("SSL_CERT_PATH", "cert.pem"),
                 log_dir=value("LOG_DIR", "logs"),
@@ -278,6 +294,9 @@ class AppSettings(SettingsModel):
                         "RFDETR_OPTIMIZE_FOR_INFERENCE",
                         True,
                     ),
+                    warmup_enabled=value("RFDETR_WARMUP_ENABLED", True),
+                    warmup_width=value("RFDETR_WARMUP_WIDTH", 640),
+                    warmup_height=value("RFDETR_WARMUP_HEIGHT", 480),
                 ),
                 vlm=AutoVlmSettings(
                     max_output_tokens=value("AUTO_VLM_MAX_OUTPUT_TOKENS", 80),
@@ -300,6 +319,10 @@ class AppSettings(SettingsModel):
                 suppress_unchanged_class_counts=value(
                     "SUPPRESS_UNCHANGED_CLASS_COUNTS",
                     True,
+                ),
+                semantic_box_iou_threshold=value(
+                    "SEMANTIC_BOX_IOU_THRESHOLD",
+                    0.65,
                 ),
             ),
             pointing=PointingSettings(

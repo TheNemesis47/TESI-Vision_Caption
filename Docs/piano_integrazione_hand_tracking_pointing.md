@@ -500,8 +500,7 @@ responsabilità specifiche del regime AUTO.
 - i valori in pixel del prototipo non sono portabili direttamente;
 - lo streaming testuale AUTO non è compatibile con il JSON pointing;
 - i fake devono rispettare davvero i contratti asincroni dei port;
-- il debug su filesystem non deve diventare una dipendenza del core;
-- i grafi Graphify devono essere aggiornati dopo l'aggiunta dei nuovi moduli.
+- il debug su filesystem non deve diventare una dipendenza del core.
 
 ## 9. Ordine pratico di implementazione
 

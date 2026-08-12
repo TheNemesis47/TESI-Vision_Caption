@@ -13,7 +13,12 @@ def test_app_settings_loads_nested_values_from_environment() -> None:
             "USE_MOCKS": "true",
             "SSIM_THRESHOLD": "0.72",
             "RFDETR_THRESHOLD": "0.51",
+            "RFDETR_WARMUP_ENABLED": "false",
+            "AUTO_INPUT_FPS": "1.5",
+            "POINTING_INPUT_FPS": "8",
+            "WS_OPTIONAL_SEND_TIMEOUT_SECONDS": "0.4",
             "MIN_CAPTION_INTERVAL_SECONDS": "2.5",
+            "SEMANTIC_BOX_IOU_THRESHOLD": "0.7",
             "POINTING_CONFIRMATION_SECONDS": "0.15",
             "POINTING_EVENT_COOLDOWN_SECONDS": "1.5",
             "POINTING_CORRIDOR_COLOR_HEX": "#12abef",
@@ -25,7 +30,12 @@ def test_app_settings_loads_nested_values_from_environment() -> None:
     assert settings.runtime.use_mocks
     assert settings.auto.ssim.threshold == 0.72
     assert settings.auto.rfdetr.confidence_threshold == 0.51
+    assert not settings.auto.rfdetr.warmup_enabled
+    assert settings.server.auto_input_fps == 1.5
+    assert settings.server.pointing_input_fps == 8.0
+    assert settings.server.websocket_optional_send_timeout_seconds == 0.4
     assert settings.auto.min_caption_interval_seconds == 2.5
+    assert settings.auto.semantic_box_iou_threshold == 0.7
     assert settings.pointing.gesture.confirmation_seconds == 0.15
     assert settings.pointing.gesture.event_cooldown_seconds == 1.5
     assert settings.pointing.corridor.color_hex == "#12ABEF"

@@ -5,6 +5,7 @@ import rfdetr
 from transformers import PretrainedFSMTModel
 import numpy as np
 import supervision as sv
+from loguru import logger
 
 from vision_caption.core.domain.frame import Frame
 from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
@@ -36,4 +37,15 @@ class RfdetrSceneDetectorAdapter:
             is_change=True,
             detections=tuple(detections),
             execution_ms=execution_time
+        )
+
+    def warm_up(self, width: int = 640, height: int = 480) -> None:
+        """Esegue la compilazione lazy prima che arrivi il primo utente."""
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        t0 = time.perf_counter()
+        self.model.predict(image, self.threshold)
+        logger.info(
+            "RF-DETR warm-up completed in "
+            f"{(time.perf_counter() - t0) * 1000.0:.1f}ms "
+            f"({width}x{height})."
         )

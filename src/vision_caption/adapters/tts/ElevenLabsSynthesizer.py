@@ -27,7 +27,8 @@ class ElevenLabsSynthesizer(SpeechSynthesizerPort):
         payload = {
             "text": text,
             "model_id": self._model_id,
-            # Niente settings complessi, lasciamo il default del modello per la massima velocità
+            "language_code": language,
+            "apply_text_normalization": "on",
         }
         
         async with httpx.AsyncClient() as client:
