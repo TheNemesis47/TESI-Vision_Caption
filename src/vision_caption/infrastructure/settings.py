@@ -13,18 +13,31 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_FRONTEND_DIST_PATH = (
+    BACKEND_ROOT.parent / "TESI-Vision_Caption_Client" / "dist"
+)
+
+
+def resolve_backend_path(value: str | Path) -> Path:
+    """Resolve deployment paths independently from the shell working directory."""
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (BACKEND_ROOT / path).resolve()
+
+
 class SettingsModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class ServerSettings(SettingsModel):
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)
     websocket_ping_interval_seconds: float = Field(default=300.0, gt=0.0)
     websocket_ping_timeout_seconds: float = Field(default=300.0, gt=0.0)
     websocket_drain_timeout_seconds: float = Field(default=0.005, ge=0.0)
-    ssl_key_path: Path = Path("key.pem")
-    ssl_cert_path: Path = Path("cert.pem")
+    frontend_dist_path: Path = DEFAULT_FRONTEND_DIST_PATH
     log_dir: Path = Path("logs")
     log_level: str = "DEBUG"
     auto_input_fps: float = Field(default=2.0, gt=0.0)
@@ -208,7 +221,7 @@ class AppSettings(SettingsModel):
 
         return cls(
             server=ServerSettings(
-                host=value("SERVER_HOST", "0.0.0.0"),
+                host=value("SERVER_HOST", "127.0.0.1"),
                 port=value("SERVER_PORT", 8765),
                 websocket_ping_interval_seconds=value(
                     "WS_PING_INTERVAL_SECONDS",
@@ -228,8 +241,9 @@ class AppSettings(SettingsModel):
                     "WS_OPTIONAL_SEND_TIMEOUT_SECONDS",
                     0.25,
                 ),
-                ssl_key_path=value("SSL_KEY_PATH", "key.pem"),
-                ssl_cert_path=value("SSL_CERT_PATH", "cert.pem"),
+                frontend_dist_path=resolve_backend_path(
+                    value("FRONTEND_DIST_PATH", DEFAULT_FRONTEND_DIST_PATH)
+                ),
                 log_dir=value("LOG_DIR", "logs"),
                 log_level=value("LOG_LEVEL", "DEBUG"),
             ),

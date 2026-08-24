@@ -84,8 +84,8 @@ uv sync
 ## Avvio
 
 ```bash
-# Server (porta 8765)
-uv run python -m vision_caption
+# Produzione: verifica dist/ e ascolta solo su 127.0.0.1:8765
+./run_server.sh
 
 # Con mock (senza GPU, per sviluppo)
 USE_MOCKS=true uv run python -m vision_caption
@@ -151,6 +151,7 @@ tipizzate ai componenti.
 Valori principali:
 
 - `SERVER_HOST` / `SERVER_PORT` — binding del server WebSocket;
+- `FRONTEND_DIST_PATH` — build Vite servita da FastAPI;
 - `SSIM_THRESHOLD` — soglia SSIM per il cambio scena;
 - `RFDETR_THRESHOLD` / `RFDETR_CUSTOM_THRESHOLD` — confidence delle detection;
 - `SUPPRESS_UNCHANGED_CLASS_COUNTS` — abilita il filtro semantico corrente;
@@ -213,13 +214,34 @@ frontend completo è in `Docs/handoff_frontend_pointing_overlay.md`.
 
 ---
 
-## Deploy — Cluster HPC (PurpleJeans)
+## Deploy frontend e Cloudflare Tunnel
 
-```bash
-sbatch deploy/slurm_job.sh
+Frontend e backend devono essere cartelle sorelle:
+
+```text
+Documenti/
+├── visionCaption-TESI/
+└── TESI-Vision_Caption_Client/
+    └── dist/
 ```
 
+Il deploy è esplicito e non viene eseguito a ogni riavvio:
+
 ```bash
-# Oppure Docker
-docker compose -f deploy/docker-compose.yml up
+./scripts/deploy_frontend.sh
 ```
+
+Lo script aggiorna `main`, verifica che includa almeno il commit `cac6631`,
+esegue `npm ci` e genera `dist/`. In produzione non va definita
+`VITE_VISION_WS_URL`: il frontend usa lo stesso host della pagina.
+
+Avvio definitivo:
+
+```bash
+./run_server.sh
+```
+
+Uvicorn serve frontend, `/health` e `/ws/vision` in HTTP locale su
+`127.0.0.1:8765`. Cloudflare Tunnel deve inoltrare l'hostname pubblico
+`vision.serverpersonaledomotico95.online` verso `http://127.0.0.1:8765`.
+HTTPS e WSS terminano su Cloudflare; il backend non carica certificati TLS.

@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from vision_caption.infrastructure.settings import (
     AppSettings,
+    BACKEND_ROOT,
     PointingCorridorSettings,
 )
 
@@ -11,6 +12,7 @@ def test_app_settings_loads_nested_values_from_environment() -> None:
     settings = AppSettings.from_env(
         {
             "USE_MOCKS": "true",
+            "FRONTEND_DIST_PATH": "../frontend/dist",
             "SSIM_THRESHOLD": "0.72",
             "RFDETR_THRESHOLD": "0.51",
             "RFDETR_WARMUP_ENABLED": "false",
@@ -28,6 +30,10 @@ def test_app_settings_loads_nested_values_from_environment() -> None:
     )
 
     assert settings.runtime.use_mocks
+    assert settings.server.host == "127.0.0.1"
+    assert settings.server.frontend_dist_path == (
+        BACKEND_ROOT / "../frontend/dist"
+    ).resolve()
     assert settings.auto.ssim.threshold == 0.72
     assert settings.auto.rfdetr.confidence_threshold == 0.51
     assert not settings.auto.rfdetr.warmup_enabled

@@ -43,6 +43,22 @@ class DisconnectingWebSocket:
         self.sent_messages.append(message)
 
 
+class DisconnectingBeforeConfigWebSocket:
+    def __init__(self) -> None:
+        self.accepted = False
+        self.send_attempts = 0
+        self.app = SimpleNamespace(
+            state=SimpleNamespace(settings=AppSettings())
+        )
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def send_json(self, message: dict) -> None:
+        self.send_attempts += 1
+        raise WebSocketDisconnect(code=1006)
+
+
 class OverlayPipeline(FakePipeline):
     async def process(
         self,
@@ -137,6 +153,16 @@ class OneFrameWebSocket:
         if message["type"] == self._slow_message_type:
             await asyncio.sleep(0.05)
         self.sent_messages.append(message)
+
+
+@pytest.mark.asyncio
+async def test_disconnect_before_stream_config_is_handled() -> None:
+    websocket = DisconnectingBeforeConfigWebSocket()
+
+    await vision_websocket(websocket)
+
+    assert websocket.accepted
+    assert websocket.send_attempts == 1
 
 
 @pytest.mark.asyncio

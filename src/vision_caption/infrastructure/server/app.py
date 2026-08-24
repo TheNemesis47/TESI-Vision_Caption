@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from loguru import logger
 from vision_caption.infrastructure.settings import AppSettings
 from vision_caption.infrastructure.server.ws_handler import router as ws_router
+from vision_caption.infrastructure.server.static_frontend import mount_frontend
 
 # Import dei componenti di dominio e porte
 from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
@@ -341,5 +342,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/health")
     def health():
         return {"status": "ok", "mode": "mock" if use_mocks else "production"}
+
+    # Il frontend va montato per ultimo: /health, /docs e /ws/vision devono
+    # continuare a essere risolti dalle route backend registrate sopra.
+    frontend_dist_path = settings.server.frontend_dist_path
+    if mount_frontend(app, frontend_dist_path):
+        logger.info(f"Serving frontend build from: {frontend_dist_path}")
+    else:
+        logger.warning(
+            "Frontend build not found at "
+            f"{frontend_dist_path}. Backend routes remain available."
+        )
 
     return app

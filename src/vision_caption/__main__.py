@@ -82,39 +82,19 @@ def main():
     app = create_app(settings)
 
     server = settings.server
-    ssl_key = server.ssl_key_path
-    ssl_cert = server.ssl_cert_path
-
-    common_options = {
-        "host": server.host,
-        "port": server.port,
-        "ws_ping_interval": server.websocket_ping_interval_seconds,
-        "ws_ping_timeout": server.websocket_ping_timeout_seconds,
-        "log_config": None,
-        "access_log": True,
-    }
-
-    if ssl_key.exists() and ssl_cert.exists():
-        logger.info(
-            f"SSL certificates found ({ssl_key}, {ssl_cert}). "
-            f"Starting uvicorn server on https://{server.host}:{server.port} "
-            f"(WSS enabled)..."
-        )
-        uvicorn.run(
-            app,
-            **common_options,
-            ssl_keyfile=str(ssl_key),
-            ssl_certfile=str(ssl_cert),
-        )
-    else:
-        logger.info(
-            f"Starting uvicorn server on "
-            f"http://{server.host}:{server.port}..."
-        )
-        uvicorn.run(
-            app,
-            **common_options,
-        )
+    logger.info(
+        f"Starting uvicorn server on http://{server.host}:{server.port} "
+        "(TLS terminates at Cloudflare Tunnel)..."
+    )
+    uvicorn.run(
+        app,
+        host=server.host,
+        port=server.port,
+        ws_ping_interval=server.websocket_ping_interval_seconds,
+        ws_ping_timeout=server.websocket_ping_timeout_seconds,
+        log_config=None,
+        access_log=True,
+    )
 
 if __name__ == '__main__':
     main()

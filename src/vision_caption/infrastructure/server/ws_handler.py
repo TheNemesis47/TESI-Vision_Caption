@@ -23,18 +23,25 @@ async def vision_websocket(websocket: WebSocket) -> None:
         settings = AppSettings()
 
     await websocket.accept()
-    await websocket.send_json(
-        {
-            "type": "stream_config",
-            "protocol_version": 1,
-            "fps": {
-                "AUTO": settings.server.auto_input_fps,
-                "POINTING": settings.server.pointing_input_fps,
-            },
-            "max_in_flight": 1,
-            "max_buffered_amount_bytes": 262_144,
-        }
-    )
+    try:
+        await websocket.send_json(
+            {
+                "type": "stream_config",
+                "protocol_version": 1,
+                "fps": {
+                    "AUTO": settings.server.auto_input_fps,
+                    "POINTING": settings.server.pointing_input_fps,
+                },
+                "max_in_flight": 1,
+                "max_buffered_amount_bytes": 262_144,
+            }
+        )
+    except WebSocketDisconnect:
+        logger.debug(
+            "Client disconnected before receiving the initial stream_config."
+        )
+        return
+
     logger.info("New client connected via WebSocket.")
     pipeline_factory = getattr(websocket.app.state, "pipeline_factory", None)
     owns_pipeline = pipeline_factory is not None
