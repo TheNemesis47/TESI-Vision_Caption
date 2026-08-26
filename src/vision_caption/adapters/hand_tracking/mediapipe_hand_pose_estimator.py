@@ -1,4 +1,6 @@
 import asyncio
+import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic_ns
@@ -18,6 +20,25 @@ from vision_caption.core.domain.hand_pose import (
 from vision_caption.core.ports.hand_pose_estimator_port import (
     HandPoseEstimatorPort,
 )
+
+
+def _stub_sounddevice_before_mediapipe_import() -> None:
+    """Impedisce a MediaPipe di inizializzare PortAudio quando importa.
+
+    `mediapipe.tasks.python` importa `sounddevice` per le task audio, e
+    l'import di `sounddevice` esegue subito `Pa_Initialize()`. Su una macchina
+    con PipeWire, PortAudio apre anche il backend JACK e avvia il data loop di
+    PipeWire: da quel momento la creazione di `HandLandmarker` termina l'intero
+    processo con SIGKILL, chiudendo il WebSocket senza alcun traceback.
+
+    Il server non usa le task audio di MediaPipe, quindi al posto del modulo
+    vero registriamo uno stub vuoto. Se `sounddevice` è già stato importato da
+    qualcun altro non facciamo nulla: sostituirlo non annullerebbe comunque
+    l'inizializzazione di PortAudio già avvenuta.
+    """
+    if "sounddevice" in sys.modules:
+        return
+    sys.modules["sounddevice"] = types.ModuleType("sounddevice")
 
 
 @dataclass(frozen=True)
@@ -176,6 +197,8 @@ class MediaPipeHandPoseEstimator(HandPoseEstimatorPort):
                 "Modello MediaPipe non trovato: "
                 f"{self._settings.model_path}. Configura HAND_LANDMARKER_MODEL_PATH."
             )
+
+        _stub_sounddevice_before_mediapipe_import()
 
         try:
             import mediapipe as mediapipe
