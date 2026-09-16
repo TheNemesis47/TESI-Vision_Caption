@@ -120,10 +120,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     else:
         logger.info("Initializing server in PRODUCTION MODE (loading neural network and adapters)...")
         
-        openrouter_api_key = settings.openrouter.api_key
-        if not openrouter_api_key:
-            logger.error("OPENROUTER_API_KEY environment variable is not set!")
-            raise ValueError("OPENROUTER_API_KEY is required in production mode.")
+        vlm_provider = settings.vlm.resolved_provider
+        vlm_base_url = settings.vlm.resolved_base_url
+        vlm_model = settings.vlm.resolved_model_name
+        logger.info(
+            f"VLM: provider={vlm_provider}, modello={vlm_model}, endpoint={vlm_base_url}"
+        )
 
         # Inizializzazione SSIM e RF-DETR
         ssim_detector = SsimSceneDetectorAdapter(
@@ -185,21 +187,20 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             ),
         )
         
-        # Adapters per VLM (OpenRouter) e TTS
-        vlm_model = settings.openrouter.model_name
-        logger.info(f"Using VLM model for captioning: {vlm_model}")
+        # Il generatore parla l'API chat/completions di OpenAI, che vale sia per
+        # OpenRouter sia per un Ollama in rete locale: cambia solo l'endpoint.
         caption_generator = OpenRouterCaptionGenerator(
-            api_key=openrouter_api_key,
+            api_key=settings.vlm.api_key,
             model_name=vlm_model,
-            base_url=settings.openrouter.base_url,
+            base_url=vlm_base_url,
             max_tokens=settings.auto.vlm.max_output_tokens,
             temperature=settings.auto.vlm.temperature,
             timeout_seconds=settings.auto.vlm.http_timeout_seconds,
         )
         pointing_caption_generator = OpenRouterPointingCaptionGenerator(
-            api_key=openrouter_api_key,
+            api_key=settings.vlm.api_key,
             model_name=vlm_model,
-            base_url=settings.openrouter.base_url,
+            base_url=vlm_base_url,
             timeout_seconds=settings.pointing.vlm.timeout_seconds,
             max_tokens=settings.pointing.vlm.max_output_tokens,
             temperature=settings.pointing.vlm.temperature,
@@ -219,8 +220,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             ),
         )
         
-        if settings.tts.elevenlabs_api_key:
-            logger.info("ELEVENLABS_API_KEY found. Using ultra-fast ElevenLabs TTS engine.")
+        if settings.tts.resolved_provider == "elevenlabs":
+            logger.info("TTS: ElevenLabs (cloud).")
             speech_synthesizer = ElevenLabsSynthesizer(
                 api_key=settings.tts.elevenlabs_api_key,
                 voice_id=settings.tts.elevenlabs_voice_id,
@@ -228,7 +229,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 timeout_seconds=settings.tts.elevenlabs_timeout_seconds,
             )
         else:
-            logger.info("ELEVENLABS_API_KEY missing. Falling back to local Chatterbox TTS.")
+            logger.info(f"TTS: Chatterbox locale su {settings.tts.chatterbox_url}.")
             speech_synthesizer = ChatterboxSynthesizer(
                 base_url=settings.tts.chatterbox_url,
                 timeout_seconds=settings.tts.chatterbox_timeout_seconds,

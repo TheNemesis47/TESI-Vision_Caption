@@ -8,9 +8,15 @@ all'avvio; i layer interni ricevono poi soltanto valori già validati.
 from collections.abc import Mapping
 from os import environ
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
@@ -53,24 +59,93 @@ class RuntimeSettings(SettingsModel):
     device: str = "cuda"
 
 
-class OpenRouterSettings(SettingsModel):
+DEFAULT_CLOUD_VLM_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_LOCAL_VLM_BASE_URL = "http://localhost:11434/v1"
+DEFAULT_CLOUD_VLM_MODEL = "google/gemini-2.5-flash"
+DEFAULT_LOCAL_VLM_MODEL = "gemma3:4b"
+DEFAULT_LOCAL_TTS_URL = "http://localhost:4123"
+
+
+class VlmSettings(SettingsModel):
+    """Quale modello visivo-linguistico usare, e dove trovarlo.
+
+    ``auto`` è il comportamento storico: con una chiave si va su OpenRouter,
+    senza si va su un server locale. Dichiarare il provider serve a sbagliare
+    rumorosamente: chi scrive ``openrouter`` e dimentica la chiave vuole un
+    errore all'avvio, non ritrovarsi su un modello diverso da quello che crede.
+    """
+
+    provider: Literal["auto", "openrouter", "local"] = "auto"
     api_key: str = Field(default="", repr=False)
-    base_url: str = "https://openrouter.ai/api/v1"
-    model_name: str = "google/gemini-2.5-flash"
+    base_url: str = ""
+    model_name: str = ""
+
+    @property
+    def resolved_provider(self) -> Literal["openrouter", "local"]:
+        if self.provider != "auto":
+            return self.provider
+        return "openrouter" if self.api_key else "local"
+
+    @property
+    def resolved_base_url(self) -> str:
+        if self.base_url:
+            return self.base_url
+        if self.resolved_provider == "openrouter":
+            return DEFAULT_CLOUD_VLM_BASE_URL
+        return DEFAULT_LOCAL_VLM_BASE_URL
+
+    @property
+    def resolved_model_name(self) -> str:
+        if self.model_name:
+            return self.model_name
+        if self.resolved_provider == "openrouter":
+            return DEFAULT_CLOUD_VLM_MODEL
+        return DEFAULT_LOCAL_VLM_MODEL
+
+    @model_validator(mode="after")
+    def _check_credentials(self) -> "VlmSettings":
+        if self.provider == "openrouter" and not self.api_key:
+            raise ValueError(
+                "VLM_PROVIDER=openrouter richiede OPENROUTER_API_KEY. "
+                "Per un modello locale usa VLM_PROVIDER=local."
+            )
+        return self
 
 
 class TtsSettings(SettingsModel):
+    """Quale voce usare: il servizio cloud o il server locale.
+
+    Vale la stessa regola del modello visivo: ``auto`` sceglie in base alla
+    chiave, un provider dichiarato senza le sue credenziali ferma l'avvio.
+    """
+
+    provider: Literal["auto", "elevenlabs", "local"] = "auto"
     elevenlabs_api_key: str = Field(default="", repr=False)
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model_id: str = "eleven_turbo_v2_5"
     elevenlabs_timeout_seconds: float = Field(default=10.0, gt=0.0)
-    chatterbox_url: str = "http://localhost:4123"
+    chatterbox_url: str = DEFAULT_LOCAL_TTS_URL
     chatterbox_timeout_seconds: float = Field(default=120.0, gt=0.0)
     chatterbox_voice: str = "alloy"
     chatterbox_speed: float = Field(default=1.0, gt=0.0)
     chatterbox_exaggeration: float = Field(default=0.7, ge=0.0)
     chatterbox_cfg_weight: float = Field(default=0.4, ge=0.0)
     chatterbox_temperature: float = Field(default=0.9, ge=0.0)
+
+    @property
+    def resolved_provider(self) -> Literal["elevenlabs", "local"]:
+        if self.provider != "auto":
+            return self.provider
+        return "elevenlabs" if self.elevenlabs_api_key else "local"
+
+    @model_validator(mode="after")
+    def _check_credentials(self) -> "TtsSettings":
+        if self.provider == "elevenlabs" and not self.elevenlabs_api_key:
+            raise ValueError(
+                "TTS_PROVIDER=elevenlabs richiede ELEVENLABS_API_KEY. "
+                "Per la voce locale usa TTS_PROVIDER=local."
+            )
+        return self
 
 
 class SsimSettings(SettingsModel):
@@ -204,7 +279,7 @@ class PointingSettings(SettingsModel):
 class AppSettings(SettingsModel):
     server: ServerSettings = Field(default_factory=ServerSettings)
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
-    openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
+    vlm: VlmSettings = Field(default_factory=VlmSettings)
     tts: TtsSettings = Field(default_factory=TtsSettings)
     auto: AutoCaptionSettings = Field(default_factory=AutoCaptionSettings)
     pointing: PointingSettings = Field(default_factory=PointingSettings)
@@ -251,15 +326,16 @@ class AppSettings(SettingsModel):
                 use_mocks=value("USE_MOCKS", False),
                 device=value("DEVICE", "cuda"),
             ),
-            openrouter=OpenRouterSettings(
+            vlm=VlmSettings(
+                provider=value("VLM_PROVIDER", "auto"),
                 api_key=value("OPENROUTER_API_KEY", ""),
-                base_url=value(
-                    "OPENROUTER_BASE_URL",
-                    "https://openrouter.ai/api/v1",
-                ),
-                model_name=value("VLM_MODEL", "google/gemini-2.5-flash"),
+                # OPENROUTER_BASE_URL resta valido: è il nome che avevano le
+                # configurazioni scritte prima che il provider fosse scegliibile.
+                base_url=value("VLM_BASE_URL", value("OPENROUTER_BASE_URL", "")),
+                model_name=value("VLM_MODEL", ""),
             ),
             tts=TtsSettings(
+                provider=value("TTS_PROVIDER", "auto"),
                 elevenlabs_api_key=value("ELEVENLABS_API_KEY", ""),
                 elevenlabs_voice_id=value(
                     "ELEVENLABS_VOICE_ID",
@@ -275,7 +351,7 @@ class AppSettings(SettingsModel):
                 ),
                 chatterbox_url=value(
                     "CHATTERBOX_URL",
-                    "http://localhost:4123",
+                    DEFAULT_LOCAL_TTS_URL,
                 ),
                 chatterbox_timeout_seconds=value(
                     "CHATTERBOX_TIMEOUT_SECONDS",

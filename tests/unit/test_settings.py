@@ -68,3 +68,67 @@ def test_corridor_settings_exposes_frontend_contract() -> None:
 def test_invalid_settings_fail_during_startup() -> None:
     with pytest.raises(ValidationError):
         AppSettings.from_env({"SSIM_THRESHOLD": "2.0"})
+
+
+def test_senza_chiavi_si_va_sui_servizi_locali() -> None:
+    settings = AppSettings.from_env({})
+
+    assert settings.vlm.resolved_provider == "local"
+    assert settings.vlm.resolved_base_url == "http://localhost:11434/v1"
+    assert settings.vlm.resolved_model_name == "gemma3:4b"
+    assert settings.tts.resolved_provider == "local"
+
+
+def test_con_le_chiavi_si_va_sui_servizi_cloud() -> None:
+    settings = AppSettings.from_env(
+        {"OPENROUTER_API_KEY": "chiave", "ELEVENLABS_API_KEY": "chiave"}
+    )
+
+    assert settings.vlm.resolved_provider == "openrouter"
+    assert settings.vlm.resolved_base_url == "https://openrouter.ai/api/v1"
+    assert settings.vlm.resolved_model_name == "google/gemini-2.5-flash"
+    assert settings.tts.resolved_provider == "elevenlabs"
+
+
+def test_il_provider_dichiarato_vince_sulla_presenza_della_chiave() -> None:
+    settings = AppSettings.from_env(
+        {
+            "VLM_PROVIDER": "local",
+            "OPENROUTER_API_KEY": "chiave",
+            "TTS_PROVIDER": "local",
+            "ELEVENLABS_API_KEY": "chiave",
+        }
+    )
+
+    assert settings.vlm.resolved_provider == "local"
+    assert settings.tts.resolved_provider == "local"
+
+
+def test_un_provider_cloud_senza_la_sua_chiave_ferma_l_avvio() -> None:
+    with pytest.raises(ValidationError):
+        AppSettings.from_env({"VLM_PROVIDER": "openrouter"})
+    with pytest.raises(ValidationError):
+        AppSettings.from_env({"TTS_PROVIDER": "elevenlabs"})
+
+
+def test_gli_endpoint_locali_restano_configurabili() -> None:
+    settings = AppSettings.from_env(
+        {
+            "VLM_PROVIDER": "local",
+            "VLM_BASE_URL": "http://ollama:11434/v1",
+            "VLM_MODEL": "qwen2.5vl:7b",
+            "CHATTERBOX_URL": "http://chatterbox:4123",
+        }
+    )
+
+    assert settings.vlm.resolved_base_url == "http://ollama:11434/v1"
+    assert settings.vlm.resolved_model_name == "qwen2.5vl:7b"
+    assert settings.tts.chatterbox_url == "http://chatterbox:4123"
+
+
+def test_il_vecchio_nome_dell_endpoint_continua_a_valere() -> None:
+    settings = AppSettings.from_env(
+        {"OPENROUTER_API_KEY": "chiave", "OPENROUTER_BASE_URL": "http://proxy/v1"}
+    )
+
+    assert settings.vlm.resolved_base_url == "http://proxy/v1"
