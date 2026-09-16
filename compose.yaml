@@ -1,0 +1,92 @@
+# VisionCaption, server e client.
+#
+#   docker compose up -d                        tutto in cloud (OpenRouter + ElevenLabs)
+#   docker compose --profile local-vlm up -d    modello visivo in casa, con Ollama
+#   docker compose --profile local-tts up -d    voce in casa, con Chatterbox
+#   docker compose --profile local-vlm --profile local-tts up -d     niente cloud
+#
+# Di suo nessun servizio chiede la GPU, così questo file parte anche su una
+# macchina che non ne ha. Per usarla si aggiunge compose.gpu.yaml, una volta
+# sola, mettendo nel .env:  COMPOSE_FILE=compose.yaml:compose.gpu.yaml
+#
+# Le chiavi e le soglie stanno nel .env accanto a questo file: si parte da
+# .env.example. I profili accendono i servizi locali, il .env dice al server
+# quale usare.
+name: visioncaption
+
+services:
+  server:
+    image: ${IMAGE_NAMESPACE:-thenemesis47}/visioncaption-server:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      args:
+        # cu128 per NVIDIA, rocm7.2 per AMD, cpu per nessuna GPU.
+        TORCH_VARIANT: ${TORCH_VARIANT:-cu128}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SERVER_HOST: 0.0.0.0
+      # I servizi locali vivono nella rete di compose, non su localhost: dentro
+      # un contenitore localhost è il contenitore stesso.
+      VLM_BASE_URL: ${VLM_BASE_URL:-http://ollama:11434/v1}
+      CHATTERBOX_URL: ${CHATTERBOX_URL:-http://chatterbox:4123}
+    volumes:
+      # Il checkpoint RF-DETR adattato: sta fuori dall'immagine perché pesa e
+      # perché è materiale di chi lo ha addestrato.
+      - ./models:/app/models:ro
+    ports:
+      - "${SERVER_PORT:-8765}:8765"
+    restart: unless-stopped
+
+  client:
+    image: ${IMAGE_NAMESPACE:-thenemesis47}/visioncaption-client:${IMAGE_TAG:-latest}
+    build:
+      context: ${CLIENT_CONTEXT:-../TESI-Vision_Caption_Client}
+    environment:
+      VISION_SERVER: server:8765
+    ports:
+      - "${CLIENT_PORT:-8080}:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- locale
+  ollama:
+    profiles: ["local-vlm"]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    restart: unless-stopped
+
+  # Il primo avvio non ha ancora il modello: questo servizio lo scarica e si
+  # spegne. `docker compose --profile local-vlm run --rm ollama-pull`
+  ollama-pull:
+    profiles: ["local-vlm"]
+    image: ollama/ollama:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull ${VLM_MODEL:-gemma3:4b}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      - ollama
+    restart: "no"
+
+  chatterbox:
+    profiles: ["local-tts"]
+    # Non esiste un'immagine pubblicata: si costruisce dal progetto originale,
+    # clonato accanto a questo. https://github.com/travisvn/chatterbox-tts-api
+    build:
+      context: ${CHATTERBOX_CONTEXT:-../chatterbox-tts-api}
+      dockerfile: docker/Dockerfile.gpu
+    volumes:
+      - chatterbox-models:/app/models
+    ports:
+      - "${CHATTERBOX_PORT:-4123}:4123"
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  chatterbox-models:

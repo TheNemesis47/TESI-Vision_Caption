@@ -1,0 +1,80 @@
+# Cancelli di qualità: nessuna modifica arriva su main senza passare di qui.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Installa le dipendenze con torch per processore
+        # Il lock file fissa la variante ROCm di torch, che qui non serve e
+        # peserebbe qualche gigabyte: le prove non toccano la GPU.
+        run: |
+          uv sync --frozen \
+            --no-install-package torch \
+            --no-install-package torchvision
+          uv pip install torch torchvision \
+            --index-url https://download.pytorch.org/whl/cpu
+          # uv run risincronizzerebbe l'ambiente portandosi via torch.
+          echo "UV_NO_SYNC=1" >> "$GITHUB_ENV"
+
+      - name: Prove unitarie
+        run: uv run pytest -q
+
+      - name: La configurazione d'esempio è valida
+        # Un .env.example che non si carica è un README che mente.
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          from vision_caption.infrastructure.settings import AppSettings
+
+          env = {}
+          for line in Path('.env.example').read_text().splitlines():
+              if line.strip() and not line.startswith('#') and '=' in line:
+                  key, value = line.split('=', 1)
+                  env[key] = value.strip().strip('"')
+
+          settings = AppSettings.from_env(env)
+          print('VLM:', settings.vlm.resolved_provider, settings.vlm.resolved_model_name)
+          print('TTS:', settings.tts.resolved_provider)
+          PY
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: L'immagine si costruisce
+        # Variante per processore: è la più leggera, e verifica comunque il
+        # Dockerfile, che è la cosa che si rompe.
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: TORCH_VARIANT=cpu
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: I file compose sono validi
+        run: |
+          docker compose -f compose.yaml config >/dev/null
+          docker compose -f compose.yaml -f compose.gpu.yaml config >/dev/null

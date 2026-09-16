@@ -62,36 +62,109 @@ L'infrastructure assembla tutto tramite dependency injection.
 
 ---
 
-## Requisiti
+## Avvio con Docker
 
-- Python 3.12
-- uv (`brew install uv` oppure `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- GPU NVIDIA con CUDA 12.x (per Chatterbox TTS)
-- Ollama installato con `gemma4:e4b` (`ollama pull gemma4:e4b`)
-
----
-
-## Installazione
+È la via più breve, e l'unica che non chiede di installare PyTorch a mano.
 
 ```bash
-git clone <repo>
-cd vision-caption
-uv sync
+cp .env.example .env          # poi si scelgono i due provider, vedi sotto
+docker compose up -d          # client su http://localhost:8080
 ```
 
----
+Il client va aperto su `http://localhost` o dietro HTTPS: il browser apre la
+fotocamera soltanto in contesto sicuro, e un indirizzo IP in chiaro sulla rete
+locale non lo è. Per usarlo dal telefono serve un tunnel (vedi in fondo).
 
-## Avvio
+**Con GPU NVIDIA** — la workstation, o WSL2 su Windows con i driver NVIDIA
+installati lato Windows e `nvidia-container-toolkit` attivo:
 
 ```bash
-# Produzione: verifica dist/ e ascolta solo su 127.0.0.1:8765
+echo 'COMPOSE_FILE=compose.yaml:compose.gpu.yaml' >> .env
+docker compose up -d
+```
+
+`compose.gpu.yaml` prenota le schede. Con più di una, `SERVER_GPUS=0` lascia la
+seconda ai servizi locali: RF-DETR ne usa una sola.
+
+**Con GPU AMD** — l'immagine va ricostruita con le ruote ROCm, che l'immagine
+pubblicata non contiene:
+
+```bash
+TORCH_VARIANT=rocm7.2 docker compose build server
+```
+
+**Senza GPU** — `TORCH_VARIANT=cpu`, senza `compose.gpu.yaml`. Funziona, ma
+RF-DETR su processore è molto più lento dei 23 ms misurati su GPU.
+
+Il checkpoint RF-DETR adattato non sta nell'immagine: va messo in `./models`,
+che il compose monta in sola lettura.
+
+### Immagini pubblicate
+
+| Immagine | Contenuto |
+|---|---|
+| `thenemesis47/visioncaption-server` | server, PyTorch per NVIDIA (`cu128`) |
+| `thenemesis47/visioncaption-server:latest-cpu` | server, PyTorch per processore |
+| `thenemesis47/visioncaption-client` | build del client servita da nginx |
+
+---
+
+## Dove girano i modelli: cloud o in casa
+
+Due modelli costano: quello che guarda le immagini e quello che parla. Ognuno
+può stare su un servizio esterno o sulla macchina, e la scelta è una riga.
+
+| | Cloud | In casa |
+|---|---|---|
+| **Modello visivo** | `VLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | `VLM_PROVIDER=local` + Ollama |
+| **Voce** | `TTS_PROVIDER=elevenlabs` + `ELEVENLABS_API_KEY` | `TTS_PROVIDER=local` + Chatterbox |
+
+Lasciandoli su `auto` decide la presenza della chiave: c'è, si va nel cloud;
+non c'è, si va in locale. Dichiarare il provider serve a sbagliare
+rumorosamente — chi scrive `openrouter` e dimentica la chiave riceve un errore
+all'avvio invece di ritrovarsi su un modello diverso da quello che crede.
+
+I servizi locali si accendono con i profili di compose:
+
+```bash
+# Modello visivo in casa: alza Ollama e scarica il modello una volta sola
+docker compose --profile local-vlm up -d
+docker compose --profile local-vlm run --rm ollama-pull
+
+# Voce in casa: Chatterbox, che va clonato accanto a questo repo
+git clone https://github.com/travisvn/chatterbox-tts-api ../chatterbox-tts-api
+docker compose --profile local-tts up -d
+
+# Tutto in casa, niente rete
+docker compose --profile local-vlm --profile local-tts up -d
+```
+
+Il modello locale deve saper leggere le immagini: `gemma3:4b` è il valore
+predefinito, un modello solo testuale non descriverebbe nulla. L'adapter parla
+l'API `chat/completions` di OpenAI, quindi va bene qualunque server che la
+implementi, non solo Ollama.
+
+---
+
+## Requisiti senza Docker
+
+- Python 3.14 e [uv](https://docs.astral.sh/uv/)
+- Una GPU per RF-DETR (NVIDIA con CUDA, oppure AMD con ROCm); funziona anche
+  su processore, più lentamente
+- Il modello dei landmark della mano di MediaPipe in
+  `models/hand_tracking/hand_landmarker.task`
+
+```bash
+uv sync
+cp .env.example .env
 ./run_server.sh
+```
 
-# Con mock (senza GPU, per sviluppo)
-USE_MOCKS=true uv run python -m vision_caption
+`uv sync` installa PyTorch nella variante ROCm, che è quella della macchina su
+cui il progetto è nato. Su NVIDIA va sostituito:
 
-# Client di test con webcam
-uv run python scripts/test_client_webcam.py --host localhost --port 8765
+```bash
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 ```
 
 ---
@@ -99,14 +172,9 @@ uv run python scripts/test_client_webcam.py --host localhost --port 8765
 ## Test
 
 ```bash
-# Unit test (senza GPU)
-uv run pytest tests/unit/ -v
-
-# Integration test (richiede Ollama + GPU)
-uv run pytest tests/integration/ -v
-
-# Benchmark latenza
-uv run python scripts/benchmark_latency.py
+uv run pytest -q                 # prove unitarie, senza GPU né rete
+USE_MOCKS=true uv run python -m vision_caption
+uv run python scripts/benchmark_pipeline.py --help
 ```
 
 ---
@@ -139,7 +207,7 @@ tipizzate ai componenti.
 `.env.example` contiene l'elenco completo, organizzato nelle sezioni:
 
 - server e runtime;
-- OpenRouter;
+- provider del modello visivo (OpenRouter o locale);
 - AUTO/SSIM/RF-DETR;
 - POINTING/MediaPipe;
 - gesture e temporizzazione;
@@ -158,7 +226,8 @@ Valori principali:
 - `MIN_CAPTION_INTERVAL_SECONDS` — intervallo minimo fra caption AUTO;
 - `CAPTION_SIMILARITY_THRESHOLD` — deduplicazione testuale;
 - `MAX_FRAME_AGE_S` / `VLM_TIMEOUT_S` — freshness e timeout AUTO;
-- `VLM_MODEL` — modello OpenRouter condiviso.
+- `VLM_PROVIDER` / `TTS_PROVIDER` — cloud o locale;
+- `VLM_BASE_URL` / `VLM_MODEL` — endpoint e modello visivo condiviso.
 
 ### Configurazione POINTING
 

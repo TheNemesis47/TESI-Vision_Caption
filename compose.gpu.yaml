@@ -1,0 +1,29 @@
+# Aggiunta per le macchine con GPU NVIDIA: va usata insieme a compose.yaml.
+#
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d
+#
+# oppure, una volta sola, nel .env:
+#   COMPOSE_FILE=compose.yaml:compose.gpu.yaml
+#
+# Richiede nvidia-container-toolkit sull'host. Su Windows significa WSL2 con i
+# driver NVIDIA installati in Windows, non dentro la distribuzione Linux.
+#
+# Con più schede, NVIDIA_VISIBLE_DEVICES sceglie quale usare: "0" la prima,
+# "0,1" entrambe, "all" tutte. RF-DETR ne usa una sola, quindi su una macchina
+# a due schede conviene lasciare la seconda ai servizi locali.
+services:
+  server:
+    gpus: all
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${SERVER_GPUS:-0}
+      DEVICE: cuda
+
+  ollama:
+    gpus: all
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${OLLAMA_GPUS:-all}
+
+  chatterbox:
+    gpus: all
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${CHATTERBOX_GPUS:-all}
