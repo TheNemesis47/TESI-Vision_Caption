@@ -117,6 +117,17 @@ env/
 # Project-specific private files
 tesi/
 
+# Materiale della tesi e della discussione: resta in locale, non è codice.
+Docs/
+presentazione/
+corso-ml/
+Samuel_Arenella___Tesi_triennale_Parthenope/
+plan.md
+
+# Strumenti locali dell'agente
+skills-lock.json
+.claude/
+
 # Local screenshots and benchmark captures. Keep them available locally,
 # but do not include them in the repository.
 scripts/*.[jJ][pP][gG]
