@@ -3,7 +3,13 @@ from time import monotonic
 
 from vision_caption.core.domain.captionResult import CaptionResult
 from vision_caption.core.domain.frame import Frame
-from vision_caption.core.domain.pointing import PointingEvent, PointingOverlay
+from vision_caption.core.domain.hand_pose import HandObservation
+from vision_caption.core.domain.pointing import (
+    HandLandmarks,
+    ImagePoint,
+    PointingEvent,
+    PointingOverlay,
+)
 from vision_caption.core.domain.pointing_caption import PointingCaption
 from vision_caption.core.ports.SpeechSynthesizerPort import (
     SpeechSynthesizerPort,
@@ -23,6 +29,32 @@ from vision_caption.core.services.pointing.gesture_recognizer import (
 from vision_caption.core.services.pointing.pointing_event_gate import (
     PointingEventGate,
 )
+
+
+LANDMARK_DECIMALS = 4
+
+
+def collect_hand_landmarks(
+    hands: tuple[HandObservation, ...],
+) -> tuple[HandLandmarks, ...]:
+    """Estrae i landmark immagine di ogni mano vista, gesture o no.
+
+    Le coordinate viaggiano arrotondate: oltre il decimillesimo si tratta di
+    frazioni di pixel, e il messaggio parte a ogni fotogramma POINTING.
+    """
+    return tuple(
+        HandLandmarks(
+            handedness=hand.handedness,
+            landmarks=tuple(
+                ImagePoint(
+                    x=round(landmark.x, LANDMARK_DECIMALS),
+                    y=round(landmark.y, LANDMARK_DECIMALS),
+                )
+                for landmark in hand.image_landmarks
+            ),
+        )
+        for hand in hands
+    )
 
 
 def compose_accessibility_caption(
@@ -69,7 +101,7 @@ class PointingPipeline:
         self,
         frame: Frame,
         on_overlay: Callable[
-            [tuple[PointingOverlay, ...], int],
+            [tuple[PointingOverlay, ...], int, tuple[HandLandmarks, ...]],
             Awaitable[None],
         ]
         | None = None,
@@ -81,7 +113,11 @@ class PointingPipeline:
             timestamp=timestamp,
         )
         if on_overlay is not None:
-            await on_overlay(recognition.overlays, frame.frame_id)
+            await on_overlay(
+                recognition.overlays,
+                frame.frame_id,
+                collect_hand_landmarks(pose_result.hands),
+            )
 
         activation = next(
             (

@@ -8,6 +8,8 @@ from fastapi import WebSocketDisconnect
 from vision_caption.core.domain.detection import BoundingBox, Detection
 from vision_caption.core.domain.hand_pose import Handedness
 from vision_caption.core.domain.pointing import (
+    HandLandmarks,
+    ImagePoint,
     NormalizedPoint,
     PointingOverlay,
     PointingOverlayState,
@@ -80,6 +82,14 @@ class OverlayPipeline(FakePipeline):
                 ),
             ),
             frame.frame_id,
+            (
+                HandLandmarks(
+                    handedness=Handedness.RIGHT,
+                    landmarks=tuple(
+                        ImagePoint(x=0.5, y=0.5) for _ in range(21)
+                    ),
+                ),
+            ),
         )
         if False:
             yield
@@ -202,6 +212,12 @@ async def test_websocket_sends_normalized_pointing_overlay_message() -> None:
             },
             "state": "ACTIVE",
             "confirmation_progress": 1.0,
+        }
+    ]
+    assert message["hands"] == [
+        {
+            "handedness": "RIGHT",
+            "landmarks": [{"x": 0.5, "y": 0.5}] * 21,
         }
     ]
     assert message["corridor"]["coordinate_space"] == "normalized"

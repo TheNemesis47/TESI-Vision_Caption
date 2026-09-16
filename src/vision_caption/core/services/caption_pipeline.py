@@ -65,7 +65,7 @@ class CaptionPipeline:
             return
 
         if previous_mode == CaptionMode.POINTING and on_pointing_overlay:
-            await on_pointing_overlay((), frame.frame_id)
+            await on_pointing_overlay((), frame.frame_id, ())
 
         # 2. Altrimenti (modalità AUTO), eseguiamo i controlli a cascata
         # Analizziamo la scena per rilevare cambiamenti

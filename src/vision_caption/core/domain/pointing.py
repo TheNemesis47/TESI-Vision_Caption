@@ -53,6 +53,32 @@ class PointingOverlay(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class ImagePoint(BaseModel):
+    """Un punto nello spazio immagine, normalizzato ma non vincolato.
+
+    MediaPipe restituisce landmark leggermente fuori dal fotogramma quando la
+    mano esce dal bordo: i limiti di `NormalizedPoint` li scarterebbero.
+    """
+
+    x: float
+    y: float
+
+    model_config = ConfigDict(frozen=True)
+
+
+class HandLandmarks(BaseModel):
+    """I 21 landmark di una mano vista nel fotogramma, per la vista diagnostica.
+
+    Sono indipendenti dalla gesture: arrivano al client anche quando la mano
+    non sta puntando, ed è proprio lì che servono a capire perché.
+    """
+
+    handedness: Handedness
+    landmarks: tuple[ImagePoint, ...] = Field(min_length=21, max_length=21)
+
+    model_config = ConfigDict(frozen=True)
+
+
 class PointingEvent(BaseModel):
     handedness: Handedness
     ray: PointingRay

@@ -6,10 +6,15 @@ from vision_caption.core.domain.audio import Audio, AudioFormat
 from vision_caption.core.domain.captionResult import CaptionResult
 from vision_caption.core.domain.frame import CaptionMode, Frame
 from vision_caption.core.domain.hand_pose import (
+    HandObservation,
     HandPoseResult,
     Handedness,
+    ImageLandmark,
+    WorldLandmark,
 )
 from vision_caption.core.domain.pointing import (
+    HandLandmarks,
+    ImagePoint,
     NormalizedPoint,
     PointingOverlay,
     PointingOverlayState,
@@ -180,13 +185,16 @@ async def test_overlay_is_forwarded_even_without_vlm_activation() -> None:
         _caption(),
         (_overlay(),),
     )
-    received: list[tuple[tuple[PointingOverlay, ...], int]] = []
+    received: list[
+        tuple[tuple[PointingOverlay, ...], int, tuple[HandLandmarks, ...]]
+    ] = []
 
     async def on_overlay(
         overlays: tuple[PointingOverlay, ...],
         frame_id: int,
+        hands: tuple[HandLandmarks, ...],
     ) -> None:
-        received.append((overlays, frame_id))
+        received.append((overlays, frame_id, hands))
 
     results = [
         result
@@ -197,7 +205,7 @@ async def test_overlay_is_forwarded_even_without_vlm_activation() -> None:
     ]
 
     assert results == []
-    assert received == [((_overlay(),), 5)]
+    assert received == [((_overlay(),), 5, ())]
     assert preparer.calls == 0
     assert generator.calls == 0
     assert speech.calls == []
@@ -254,3 +262,49 @@ def test_caption_composition_falls_back_to_target() -> None:
     )
 
     assert compose_accessibility_caption(caption) == "cartello"
+
+
+def _hand_observation() -> HandObservation:
+    return HandObservation(
+        handedness=Handedness.RIGHT,
+        image_landmarks=tuple(
+            ImageLandmark(x=index / 100.0, y=0.123456, z=0.0)
+            for index in range(21)
+        ),
+        world_landmarks=tuple(
+            WorldLandmark(x=0.0, y=0.0, z=0.0) for _ in range(21)
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_hand_landmarks_reach_the_client_without_any_gesture() -> None:
+    pipeline, estimator, _, _, _, _ = _pipeline((), _caption(), ())
+    estimator.estimate = _returning_hands()
+    received: list[tuple[HandLandmarks, ...]] = []
+
+    async def on_overlay(overlays, frame_id, hands) -> None:
+        received.append(hands)
+
+    _ = [
+        result
+        async for result in pipeline.process(_frame(), on_overlay=on_overlay)
+    ]
+
+    assert len(received) == 1
+    hands = received[0]
+    assert len(hands) == 1
+    assert hands[0].handedness is Handedness.RIGHT
+    assert len(hands[0].landmarks) == 21
+    # Le coordinate arrivano arrotondate: il messaggio parte a ogni fotogramma.
+    assert hands[0].landmarks[1] == ImagePoint(x=0.01, y=0.1235)
+
+
+def _returning_hands():
+    async def estimate(frame: Frame) -> HandPoseResult:
+        return HandPoseResult(
+            frame_id=frame.frame_id,
+            hands=(_hand_observation(),),
+        )
+
+    return estimate

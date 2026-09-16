@@ -7,7 +7,7 @@ from loguru import logger
 
 from vision_caption.core.domain.detection import Detection
 from vision_caption.core.domain.frame import CaptionMode, Frame
-from vision_caption.core.domain.pointing import PointingOverlay
+from vision_caption.core.domain.pointing import HandLandmarks, PointingOverlay
 from vision_caption.infrastructure.settings import (
     AppSettings,
     PointingCorridorSettings,
@@ -79,6 +79,7 @@ async def vision_websocket(websocket: WebSocket) -> None:
     async def send_pointing_overlay(
         overlays: tuple[PointingOverlay, ...],
         frame_id: int,
+        hands: tuple[HandLandmarks, ...] = (),
     ) -> None:
         await send_optional_message(
             {
@@ -87,6 +88,7 @@ async def vision_websocket(websocket: WebSocket) -> None:
                 "overlays": [
                     overlay.model_dump(mode="json") for overlay in overlays
                 ],
+                "hands": [hand.model_dump(mode="json") for hand in hands],
                 "corridor": corridor_settings.websocket_payload(),
             }
         )

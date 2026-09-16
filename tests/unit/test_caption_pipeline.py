@@ -24,7 +24,7 @@ class FakePointingPipeline:
     async def process(self, frame: Frame, on_overlay=None):
         self.processed_frames.append(frame)
         if on_overlay is not None:
-            await on_overlay((), frame.frame_id)
+            await on_overlay((), frame.frame_id, ())
         yield CaptionResult(
             frame_id=frame.frame_id,
             caption="Oggetto indicato.",
@@ -152,13 +152,14 @@ async def test_mode_change_resets_pointing_session_and_close_releases_it() -> No
 
     _ = [result async for result in pipeline.process(pointing_frame)]
 
-    cleared_overlays: list[tuple[tuple[object, ...], int]] = []
+    cleared_overlays: list[tuple[tuple[object, ...], int, tuple[object, ...]]] = []
 
     async def on_pointing_overlay(
         overlays: tuple[object, ...],
         frame_id: int,
+        hands: tuple[object, ...] = (),
     ) -> None:
-        cleared_overlays.append((overlays, frame_id))
+        cleared_overlays.append((overlays, frame_id, hands))
 
     _ = [
         result
@@ -170,7 +171,7 @@ async def test_mode_change_resets_pointing_session_and_close_releases_it() -> No
     await pipeline.close()
 
     assert pointing_pipeline.reset_calls == 1
-    assert cleared_overlays == [((), auto_frame.frame_id)]
+    assert cleared_overlays == [((), auto_frame.frame_id, ())]
     assert pointing_pipeline.closed
 
 
@@ -259,3 +260,67 @@ async def test_stale_frame_does_not_consume_cooldown_or_commit_scene() -> None:
     assert results == []
     scene_detector.commit.assert_not_awaited()
     rate_limiter.record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_near_identical_caption_is_not_synthesized_twice() -> None:
+    """RNF-3: la seconda caption quasi identica non raggiunge la sintesi."""
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+
+    class CountingSynthesizer:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def synthesize(self, text: str) -> Audio:
+            self.calls.append(text)
+            return Audio(
+                audio_format=AudioFormat.WAV,
+                audio_bytes=b"audio",
+                audio_duration=0.5,
+            )
+
+    synthesizer = CountingSynthesizer()
+
+    def pipeline_per(testo: str) -> CaptionPipeline:
+        return CaptionPipeline(
+            scene_detector=scene_detector,
+            caption_generator=FakeCaptionGenerator(testo),
+            speech_synthesizer=synthesizer,
+            rate_limiter=rate_limiter,
+            caption_similarity_threshold=0.85,
+        )
+
+    prima = pipeline_per("Una sedia davanti a un tavolo di legno.")
+    risultati_prima = [
+        risultato
+        async for risultato in prima.process(
+            Frame(
+                frame_id=20,
+                image_bytes=b"fake-jpeg",
+                caption_mode=CaptionMode.AUTO,
+            )
+        )
+    ]
+
+    # La pipeline conserva la baseline testuale al proprio interno, quindi la
+    # seconda elaborazione deve avvenire sulla stessa istanza.
+    risultati_seconda = [
+        risultato
+        async for risultato in prima.process(
+            Frame(
+                frame_id=21,
+                image_bytes=b"fake-jpeg",
+                caption_mode=CaptionMode.AUTO,
+            )
+        )
+    ]
+
+    assert len(risultati_prima) == 1
+    assert risultati_seconda == []
+    assert len(synthesizer.calls) == 1
