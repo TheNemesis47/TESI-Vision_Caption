@@ -27,10 +27,10 @@ services:
         required: false
     environment:
       SERVER_HOST: 0.0.0.0
-      # I servizi locali vivono nella rete di compose, non su localhost: dentro
-      # un contenitore localhost è il contenitore stesso.
-      VLM_BASE_URL: ${VLM_BASE_URL:-http://ollama:11434/v1}
-      CHATTERBOX_URL: ${CHATTERBOX_URL:-http://chatterbox:4123}
+      # Gli indirizzi dei servizi locali stanno nel .env, non qui: imporli da
+      # questo file li imporrebbe anche a chi ha scelto il cloud, e le
+      # descrizioni finirebbero contro un Ollama che non è stato acceso.
+      # .env.example ha le due righe pronte, commentate.
     volumes:
       # Il checkpoint RF-DETR adattato: sta fuori dall'immagine perché pesa e
       # perché è materiale di chi lo ha addestrato.
