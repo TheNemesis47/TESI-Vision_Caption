@@ -127,6 +127,7 @@ plan.md
 # Strumenti locali dell'agente
 skills-lock.json
 .claude/
+graphify-out/
 
 # Local screenshots and benchmark captures. Keep them available locally,
 # but do not include them in the repository.
