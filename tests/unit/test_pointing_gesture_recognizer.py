@@ -1,3 +1,5 @@
+import pytest
+
 from vision_caption.core.domain.hand_pose import (
     HandObservation,
     HandLandmark,
@@ -13,6 +15,7 @@ from vision_caption.core.services.pointing.gesture_recognizer import (
     GestureRecognizerSettings,
     PointingGestureRecognizer,
     is_pointing_pose,
+    time_scaled_alpha,
 )
 
 
@@ -98,24 +101,112 @@ def _pointing_hand() -> HandObservation:
 def test_pose_hysteresis_is_more_tolerant_while_active() -> None:
     settings = GestureRecognizerSettings()
     angles = {
-        "INDICE": FingerAngles(pip=140.0, dip=140.0),
-        "MEDIO": FingerAngles(pip=130.0, dip=130.0),
-        "ANULARE": FingerAngles(pip=130.0, dip=130.0),
-        "MIGNOLO": FingerAngles(pip=130.0, dip=130.0),
+        "INDICE": FingerAngles(pip=128.0, dip=128.0),
+        "MEDIO": FingerAngles(pip=148.0, dip=148.0),
+        "ANULARE": FingerAngles(pip=148.0, dip=148.0),
+        "MIGNOLO": FingerAngles(pip=148.0, dip=148.0),
     }
 
     assert not is_pointing_pose(
         angles,
-        1.3,
+        1.7,
         active=False,
         settings=settings,
     )
     assert is_pointing_pose(
         angles,
-        1.3,
+        1.7,
         active=True,
         settings=settings,
     )
+
+
+def test_slightly_bent_hand_still_activates() -> None:
+    """Indice non del tutto dritto, dita semichiuse e pollice scostato."""
+    angles = {
+        "INDICE": FingerAngles(pip=140.0, dip=138.0),
+        "MEDIO": FingerAngles(pip=135.0, dip=135.0),
+        "ANULARE": FingerAngles(pip=135.0, dip=135.0),
+        "MIGNOLO": FingerAngles(pip=135.0, dip=135.0),
+    }
+
+    assert is_pointing_pose(
+        angles,
+        1.5,
+        active=False,
+        settings=GestureRecognizerSettings(),
+    )
+
+
+def test_open_hand_is_not_pointing() -> None:
+    angles = {
+        finger: FingerAngles(pip=172.0, dip=172.0)
+        for finger in ("INDICE", "MEDIO", "ANULARE", "MIGNOLO")
+    }
+
+    assert not is_pointing_pose(
+        angles,
+        1.0,
+        active=False,
+        settings=GestureRecognizerSettings(),
+    )
+
+
+def test_time_scaled_alpha_matches_reference_rate_and_grows_with_gaps() -> None:
+    assert time_scaled_alpha(0.35, 1.0 / 30.0) == pytest.approx(0.35)
+    assert time_scaled_alpha(0.35, 0.25) == pytest.approx(
+        1.0 - 0.65**7.5
+    )
+    assert time_scaled_alpha(0.35, 0.25) > 0.9
+    assert time_scaled_alpha(1.0, 0.0) == 1.0
+
+
+def test_single_bad_frame_does_not_reset_confirmation() -> None:
+    settings = GestureRecognizerSettings(
+        angle_ema_alpha=1.0,
+        ray_ema_alpha=1.0,
+        confirmation_seconds=0.3,
+        release_seconds=0.15,
+    )
+    recognizer = PointingGestureRecognizer(settings)
+    hand = _pointing_hand()
+
+    assert recognizer.update((hand,), timestamp=0.0).activations == ()
+    assert recognizer.update((), timestamp=0.1).activations == ()
+    assert len(recognizer.update((hand,), timestamp=0.3).activations) == 1
+
+
+def test_prolonged_loss_resets_confirmation() -> None:
+    settings = GestureRecognizerSettings(
+        angle_ema_alpha=1.0,
+        ray_ema_alpha=1.0,
+        confirmation_seconds=0.3,
+        release_seconds=0.15,
+    )
+    recognizer = PointingGestureRecognizer(settings)
+    hand = _pointing_hand()
+
+    recognizer.update((hand,), timestamp=0.0)
+    recognizer.update((), timestamp=0.1)
+    recognizer.update((), timestamp=0.25)
+    assert recognizer.update((hand,), timestamp=0.3).activations == ()
+    assert len(recognizer.update((hand,), timestamp=0.6).activations) == 1
+
+
+def test_handedness_flip_keeps_confirmation() -> None:
+    settings = GestureRecognizerSettings(
+        angle_ema_alpha=1.0,
+        ray_ema_alpha=1.0,
+        confirmation_seconds=0.2,
+    )
+    recognizer = PointingGestureRecognizer(settings)
+    right_hand = _pointing_hand()
+    left_hand = right_hand.model_copy(update={"handedness": Handedness.LEFT})
+
+    assert recognizer.update((right_hand,), timestamp=0.0).activations == ()
+    activated = recognizer.update((left_hand,), timestamp=0.25)
+    assert len(activated.activations) == 1
+    assert activated.activations[0].handedness == Handedness.LEFT
 
 
 def test_stable_pose_activates_once_then_requires_release() -> None:

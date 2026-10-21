@@ -184,32 +184,32 @@ class MediaPipeSettings(SettingsModel):
     model_path: Path = Path("models/hand_tracking/hand_landmarker.task")
     inference_max_side: int = Field(default=960, ge=0)
     num_hands: int = Field(default=1, ge=1)
-    min_hand_detection_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
-    min_hand_presence_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
-    min_tracking_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
+    min_hand_detection_confidence: float = Field(default=0.50, ge=0.0, le=1.0)
+    min_hand_presence_confidence: float = Field(default=0.50, ge=0.0, le=1.0)
+    min_tracking_confidence: float = Field(default=0.50, ge=0.0, le=1.0)
 
 
 class PointingGestureSettings(SettingsModel):
-    index_activation_min_angle_deg: float = Field(default=145.0, ge=0.0, le=180.0)
-    index_hold_min_angle_deg: float = Field(default=135.0, ge=0.0, le=180.0)
+    index_activation_min_angle_deg: float = Field(default=135.0, ge=0.0, le=180.0)
+    index_hold_min_angle_deg: float = Field(default=120.0, ge=0.0, le=180.0)
     other_finger_activation_max_angle_deg: float = Field(
-        default=125.0,
-        ge=0.0,
-        le=180.0,
-    )
-    other_finger_hold_max_angle_deg: float = Field(
         default=140.0,
         ge=0.0,
         le=180.0,
     )
-    thumb_activation_max_palm_ratio: float = Field(default=1.25, ge=0.0)
-    thumb_hold_max_palm_ratio: float = Field(default=1.45, ge=0.0)
+    other_finger_hold_max_angle_deg: float = Field(
+        default=155.0,
+        ge=0.0,
+        le=180.0,
+    )
+    thumb_activation_max_palm_ratio: float = Field(default=1.6, ge=0.0)
+    thumb_hold_max_palm_ratio: float = Field(default=1.9, ge=0.0)
     angle_ema_alpha: float = Field(default=0.35, gt=0.0, le=1.0)
     ray_ema_alpha: float = Field(default=0.25, gt=0.0, le=1.0)
-    confirmation_seconds: float = Field(default=8.0 / 30.0, ge=0.0)
+    confirmation_seconds: float = Field(default=0.15, ge=0.0)
     release_seconds: float = Field(default=5.0 / 30.0, ge=0.0)
     min_pointing_vector_length: float = Field(default=0.0125, ge=0.0)
-    event_cooldown_seconds: float = Field(default=3.0, ge=0.0)
+    event_cooldown_seconds: float = Field(default=2.0, ge=0.0)
 
 
 class PointingCorridorSettings(SettingsModel):
@@ -425,47 +425,47 @@ class AppSettings(SettingsModel):
                     num_hands=value("HAND_NUM_HANDS", 1),
                     min_hand_detection_confidence=value(
                         "HAND_MIN_DETECTION_CONFIDENCE",
-                        0.60,
+                        0.50,
                     ),
                     min_hand_presence_confidence=value(
                         "HAND_MIN_PRESENCE_CONFIDENCE",
-                        0.60,
+                        0.50,
                     ),
                     min_tracking_confidence=value(
                         "HAND_MIN_TRACKING_CONFIDENCE",
-                        0.60,
+                        0.50,
                     ),
                 ),
                 gesture=PointingGestureSettings(
                     index_activation_min_angle_deg=value(
                         "POINTING_INDEX_ACTIVATION_MIN_ANGLE_DEG",
-                        145.0,
+                        135.0,
                     ),
                     index_hold_min_angle_deg=value(
                         "POINTING_INDEX_HOLD_MIN_ANGLE_DEG",
-                        135.0,
+                        120.0,
                     ),
                     other_finger_activation_max_angle_deg=value(
                         "POINTING_OTHER_FINGER_ACTIVATION_MAX_ANGLE_DEG",
-                        125.0,
+                        140.0,
                     ),
                     other_finger_hold_max_angle_deg=value(
                         "POINTING_OTHER_FINGER_HOLD_MAX_ANGLE_DEG",
-                        140.0,
+                        155.0,
                     ),
                     thumb_activation_max_palm_ratio=value(
                         "POINTING_THUMB_ACTIVATION_MAX_PALM_RATIO",
-                        1.25,
+                        1.6,
                     ),
                     thumb_hold_max_palm_ratio=value(
                         "POINTING_THUMB_HOLD_MAX_PALM_RATIO",
-                        1.45,
+                        1.9,
                     ),
                     angle_ema_alpha=value("POINTING_ANGLE_EMA_ALPHA", 0.35),
                     ray_ema_alpha=value("POINTING_RAY_EMA_ALPHA", 0.25),
                     confirmation_seconds=value(
                         "POINTING_CONFIRMATION_SECONDS",
-                        8.0 / 30.0,
+                        0.15,
                     ),
                     release_seconds=value(
                         "POINTING_RELEASE_SECONDS",
@@ -477,7 +477,7 @@ class AppSettings(SettingsModel):
                     ),
                     event_cooldown_seconds=value(
                         "POINTING_EVENT_COOLDOWN_SECONDS",
-                        3.0,
+                        2.0,
                     ),
                 ),
                 corridor=PointingCorridorSettings(

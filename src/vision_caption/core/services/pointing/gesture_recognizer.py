@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from math import isfinite, sqrt
 
+from loguru import logger
+
 from vision_caption.core.domain.hand_pose import HandObservation, Handedness
 from vision_caption.core.domain.pointing import (
     FingerAngles,
@@ -21,18 +23,35 @@ from vision_caption.core.services.pointing.pointing_geometry import (
 
 OTHER_FINGERS = ("MEDIO", "ANULARE", "MIGNOLO")
 
+# Gli alpha EMA sono tarati per fotogramma a questa cadenza. Il client invia
+# molti meno fotogrammi, quindi l'alpha va riscalato sul tempo reale trascorso.
+EMA_REFERENCE_FPS = 30.0
+
+
+def time_scaled_alpha(alpha: float, elapsed_seconds: float) -> float:
+    """Converte un alpha per fotogramma a 30 fps nell'alpha dell'intervallo reale.
+
+    Senza questa correzione, a 4-5 fps la media impiega secondi invece di
+    frazioni di secondo a seguire la mano, e la posa non supera mai le soglie
+    prima che l'utente rinunci.
+    """
+    if alpha >= 1.0:
+        return 1.0
+    frames = max(0.0, elapsed_seconds) * EMA_REFERENCE_FPS
+    return 1.0 - (1.0 - alpha) ** frames
+
 
 @dataclass(frozen=True)
 class GestureRecognizerSettings:
-    index_activation_min_angle_deg: float = 145.0
-    index_hold_min_angle_deg: float = 135.0
-    other_finger_activation_max_angle_deg: float = 125.0
-    other_finger_hold_max_angle_deg: float = 140.0
-    thumb_activation_max_palm_ratio: float = 1.25
-    thumb_hold_max_palm_ratio: float = 1.45
+    index_activation_min_angle_deg: float = 135.0
+    index_hold_min_angle_deg: float = 120.0
+    other_finger_activation_max_angle_deg: float = 140.0
+    other_finger_hold_max_angle_deg: float = 155.0
+    thumb_activation_max_palm_ratio: float = 1.6
+    thumb_hold_max_palm_ratio: float = 1.9
     angle_ema_alpha: float = 0.35
     ray_ema_alpha: float = 0.25
-    confirmation_seconds: float = 8.0 / 30.0
+    confirmation_seconds: float = 0.15
     release_seconds: float = 5.0 / 30.0
     min_pointing_vector_length: float = 0.0125
 
@@ -96,8 +115,26 @@ class _GestureTracker:
     filtered_thumb_palm_ratio: float | None = None
     filtered_vector: PointingVector | None = None
     candidate_since: float | None = None
+    candidate_miss_since: float | None = None
     release_since: float | None = None
     active: bool = False
+    last_timestamp: float | None = None
+    angle_alpha: float = 1.0
+    ray_alpha: float = 1.0
+
+    def advance(self, timestamp: float) -> None:
+        """Riscala gli alpha EMA sull'intervallo dal fotogramma precedente."""
+        if self.last_timestamp is not None:
+            elapsed = timestamp - self.last_timestamp
+            self.angle_alpha = time_scaled_alpha(
+                self.settings.angle_ema_alpha,
+                elapsed,
+            )
+            self.ray_alpha = time_scaled_alpha(
+                self.settings.ray_ema_alpha,
+                elapsed,
+            )
+        self.last_timestamp = timestamp
 
     def smooth_angles(
         self,
@@ -110,16 +147,8 @@ class _GestureTracker:
                 smoothed[finger_name] = current
             else:
                 smoothed[finger_name] = FingerAngles(
-                    pip=ema(
-                        previous.pip,
-                        current.pip,
-                        self.settings.angle_ema_alpha,
-                    ),
-                    dip=ema(
-                        previous.dip,
-                        current.dip,
-                        self.settings.angle_ema_alpha,
-                    ),
+                    pip=ema(previous.pip, current.pip, self.angle_alpha),
+                    dip=ema(previous.dip, current.dip, self.angle_alpha),
                 )
         self.filtered_angles = smoothed
         return smoothed
@@ -133,11 +162,7 @@ class _GestureTracker:
         ):
             smoothed = current_ratio
         else:
-            smoothed = ema(
-                previous,
-                current_ratio,
-                self.settings.angle_ema_alpha,
-            )
+            smoothed = ema(previous, current_ratio, self.angle_alpha)
         self.filtered_thumb_palm_ratio = smoothed
         return smoothed
 
@@ -147,25 +172,17 @@ class _GestureTracker:
             self.filtered_vector = current
             return current
 
-        origin_x = ema(
-            previous.origin.x,
-            current.origin.x,
-            self.settings.ray_ema_alpha,
-        )
-        origin_y = ema(
-            previous.origin.y,
-            current.origin.y,
-            self.settings.ray_ema_alpha,
-        )
+        origin_x = ema(previous.origin.x, current.origin.x, self.ray_alpha)
+        origin_y = ema(previous.origin.y, current.origin.y, self.ray_alpha)
         direction_x = ema(
             previous.direction_x,
             current.direction_x,
-            self.settings.ray_ema_alpha,
+            self.ray_alpha,
         )
         direction_y = ema(
             previous.direction_y,
             current.direction_y,
-            self.settings.ray_ema_alpha,
+            self.ray_alpha,
         )
         direction_length = sqrt(direction_x * direction_x + direction_y * direction_y)
         if direction_length == 0:
@@ -182,6 +199,7 @@ class _GestureTracker:
         """Restituisce True una sola volta quando la gesture diventa attiva."""
         if pose_matches:
             self.release_since = None
+            self.candidate_miss_since = None
             if self.active:
                 return False
 
@@ -196,9 +214,9 @@ class _GestureTracker:
                 return True
             return False
 
-        self.candidate_since = None
         if not self.active:
             self.release_since = None
+            self._tolerate_candidate_miss(timestamp)
             return False
 
         if self.release_since is None:
@@ -207,6 +225,21 @@ class _GestureTracker:
             self.release_since = None
             self.active = False
         return False
+
+    def _tolerate_candidate_miss(self, timestamp: float) -> None:
+        """Un fotogramma storto non azzera la conferma in corso.
+
+        Con pochi fotogrammi al secondo una sola stima sbagliata di MediaPipe
+        bastava a ripartire da zero. La conferma cade soltanto se la posa
+        resta non valida per release_seconds, come avviene per il rilascio.
+        """
+        if self.candidate_since is None:
+            return
+        if self.candidate_miss_since is None:
+            self.candidate_miss_since = timestamp
+        if timestamp - self.candidate_miss_since >= self.settings.release_seconds:
+            self.candidate_since = None
+            self.candidate_miss_since = None
 
     def confirmation_progress(self, timestamp: float) -> float:
         if self.active:
@@ -246,12 +279,16 @@ class PointingGestureRecognizer:
         seen_trackers: set[str] = set()
 
         for hand_index, hand in enumerate(hands):
-            tracker_key = f"{hand.handedness.value}:{hand_index}"
+            # La chiave non include la lateralità: con la mano inclinata
+            # MediaPipe la scambia spesso fra un fotogramma e l'altro, e ogni
+            # scambio creava un tracker nuovo azzerando la conferma.
+            tracker_key = str(hand_index)
             seen_trackers.add(tracker_key)
             tracker = self._trackers.setdefault(
                 tracker_key,
                 _GestureTracker(settings=self._settings),
             )
+            tracker.advance(timestamp)
 
             angles = tracker.smooth_angles(
                 calculate_finger_angles(hand.world_landmarks)
@@ -276,6 +313,18 @@ class PointingGestureRecognizer:
                     active=tracker.active,
                     settings=self._settings,
                 )
+            )
+            logger.debug(
+                "POINTING posa: indice={:.0f} medio={:.0f} anulare={:.0f} "
+                "mignolo={:.0f} pollice={:.2f} raggio={} attiva={} valida={}",
+                angles["INDICE"].extension,
+                angles["MEDIO"].extension,
+                angles["ANULARE"].extension,
+                angles["MIGNOLO"].extension,
+                thumb_ratio,
+                ray is not None,
+                tracker.active,
+                pose_matches,
             )
             just_activated = tracker.update_activation(pose_matches, timestamp)
             if just_activated and ray is not None:
