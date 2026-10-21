@@ -210,6 +210,11 @@ class PointingGestureSettings(SettingsModel):
     release_seconds: float = Field(default=5.0 / 30.0, ge=0.0)
     min_pointing_vector_length: float = Field(default=0.0125, ge=0.0)
     event_cooldown_seconds: float = Field(default=2.0, ge=0.0)
+    retarget_enabled: bool = True
+    retarget_min_angle_deg: float = Field(default=20.0, gt=0.0, le=180.0)
+    retarget_min_shift_ratio: float = Field(default=0.15, gt=0.0)
+    retarget_stable_angle_deg: float = Field(default=8.0, ge=0.0, le=180.0)
+    retarget_stable_shift_ratio: float = Field(default=0.05, ge=0.0)
 
 
 class PointingCorridorSettings(SettingsModel):
@@ -478,6 +483,23 @@ class AppSettings(SettingsModel):
                     event_cooldown_seconds=value(
                         "POINTING_EVENT_COOLDOWN_SECONDS",
                         2.0,
+                    ),
+                    retarget_enabled=value("POINTING_RETARGET_ENABLED", True),
+                    retarget_min_angle_deg=value(
+                        "POINTING_RETARGET_MIN_ANGLE_DEG",
+                        20.0,
+                    ),
+                    retarget_min_shift_ratio=value(
+                        "POINTING_RETARGET_MIN_SHIFT_RATIO",
+                        0.15,
+                    ),
+                    retarget_stable_angle_deg=value(
+                        "POINTING_RETARGET_STABLE_ANGLE_DEG",
+                        8.0,
+                    ),
+                    retarget_stable_shift_ratio=value(
+                        "POINTING_RETARGET_STABLE_SHIFT_RATIO",
+                        0.05,
                     ),
                 ),
                 corridor=PointingCorridorSettings(

@@ -119,14 +119,14 @@ class PointingPipeline:
                 collect_hand_landmarks(pose_result.hands),
             )
 
-        activation = next(
-            (
-                candidate
-                for candidate in recognition.activations
-                if self._event_gate.allow(timestamp)
-            ),
-            None,
-        )
+        activation = None
+        for candidate in recognition.activations:
+            if activation is None and self._event_gate.allow(timestamp):
+                activation = candidate
+            else:
+                # Un'attivazione bloccata dal cooldown non va persa: il
+                # riconoscitore la ripropone se il gesto è ancora mantenuto.
+                self._gesture_recognizer.cancel(candidate)
         if activation is None:
             return
 

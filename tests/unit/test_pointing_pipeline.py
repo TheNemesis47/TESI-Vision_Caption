@@ -58,6 +58,7 @@ class StubRecognizer:
         self.overlays = overlays
         self.calls = 0
         self.reset_calls = 0
+        self.cancelled: list[PointingActivation] = []
 
     def update(self, hands, *, timestamp):
         self.calls += 1
@@ -65,6 +66,9 @@ class StubRecognizer:
             activations=self.activations if self.calls == 1 else (),
             overlays=self.overlays,
         )
+
+    def cancel(self, activation: PointingActivation) -> None:
+        self.cancelled.append(activation)
 
     def reset(self) -> None:
         self.reset_calls += 1
@@ -308,3 +312,26 @@ def _returning_hands():
         )
 
     return estimate
+
+
+@pytest.mark.asyncio
+async def test_activation_blocked_by_cooldown_is_returned_to_recognizer() -> None:
+    recognizer = StubRecognizer((_activation(),))
+    gate = PointingEventGate(cooldown_seconds=5.0)
+    assert gate.allow(9.0)
+    generator = FakeGenerator(_caption())
+    pipeline = PointingPipeline(
+        hand_pose_estimator=FakeEstimator(),
+        gesture_recognizer=recognizer,
+        event_gate=gate,
+        image_preparer=FakePreparer(),
+        caption_generator=generator,
+        speech_synthesizer=FakeSpeech(),
+        clock=lambda: 10.0,
+    )
+
+    results = [result async for result in pipeline.process(_frame())]
+
+    assert results == []
+    assert generator.calls == 0
+    assert recognizer.cancelled == [_activation()]

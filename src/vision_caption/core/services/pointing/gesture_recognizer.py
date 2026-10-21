@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from math import isfinite, sqrt
+from math import acos, degrees, isfinite, sqrt
 
 from loguru import logger
 
@@ -41,6 +41,26 @@ def time_scaled_alpha(alpha: float, elapsed_seconds: float) -> float:
     return 1.0 - (1.0 - alpha) ** frames
 
 
+def vector_moved(
+    reference: PointingVector,
+    current: PointingVector,
+    *,
+    min_angle_deg: float,
+    min_shift_ratio: float,
+) -> bool:
+    """Indica se il raggio ha cambiato direzione o si è spostato abbastanza."""
+    cosine = (
+        reference.direction_x * current.direction_x
+        + reference.direction_y * current.direction_y
+    )
+    angle = degrees(acos(max(-1.0, min(1.0, cosine))))
+    shift = sqrt(
+        (reference.origin.x - current.origin.x) ** 2
+        + (reference.origin.y - current.origin.y) ** 2
+    )
+    return angle >= min_angle_deg or shift >= min_shift_ratio
+
+
 @dataclass(frozen=True)
 class GestureRecognizerSettings:
     index_activation_min_angle_deg: float = 135.0
@@ -54,6 +74,11 @@ class GestureRecognizerSettings:
     confirmation_seconds: float = 0.15
     release_seconds: float = 5.0 / 30.0
     min_pointing_vector_length: float = 0.0125
+    retarget_enabled: bool = True
+    retarget_min_angle_deg: float = 20.0
+    retarget_min_shift_ratio: float = 0.15
+    retarget_stable_angle_deg: float = 8.0
+    retarget_stable_shift_ratio: float = 0.05
 
     def __post_init__(self) -> None:
         if not 0.0 < self.angle_ema_alpha <= 1.0:
@@ -64,12 +89,20 @@ class GestureRecognizerSettings:
             raise ValueError("Le soglie temporali non possono essere negative")
         if self.min_pointing_vector_length < 0.0:
             raise ValueError("La lunghezza minima del vettore non può essere negativa")
+        if (
+            self.retarget_min_angle_deg <= self.retarget_stable_angle_deg
+            or self.retarget_min_shift_ratio <= self.retarget_stable_shift_ratio
+        ):
+            raise ValueError(
+                "Le soglie di cambio bersaglio devono superare quelle di stabilità"
+            )
 
 
 @dataclass(frozen=True)
 class PointingActivation:
     handedness: Handedness
     ray: PointingRay
+    tracker_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -118,6 +151,12 @@ class _GestureTracker:
     candidate_miss_since: float | None = None
     release_since: float | None = None
     active: bool = False
+    # Raggio dell'ultima attivazione: tenendo il dito puntato e spostandolo
+    # su un altro oggetto si ottiene una nuova descrizione senza ripuntare.
+    anchor: PointingVector | None = None
+    previous_anchor: PointingVector | None = None
+    retarget_reference: PointingVector | None = None
+    retarget_since: float | None = None
     last_timestamp: float | None = None
     angle_alpha: float = 1.0
     ray_alpha: float = 1.0
@@ -196,12 +235,12 @@ class _GestureTracker:
         return self.filtered_vector
 
     def update_activation(self, pose_matches: bool, timestamp: float) -> bool:
-        """Restituisce True una sola volta quando la gesture diventa attiva."""
+        """Restituisce True quando la gesture diventa attiva o cambia bersaglio."""
         if pose_matches:
             self.release_since = None
             self.candidate_miss_since = None
             if self.active:
-                return False
+                return self._update_retarget(timestamp)
 
             if self.candidate_since is None:
                 self.candidate_since = timestamp
@@ -211,6 +250,7 @@ class _GestureTracker:
             ):
                 self.candidate_since = None
                 self.active = True
+                self._move_anchor(None)
                 return True
             return False
 
@@ -224,7 +264,71 @@ class _GestureTracker:
         if timestamp - self.release_since >= self.settings.release_seconds:
             self.release_since = None
             self.active = False
+            self.anchor = None
+            self._clear_retarget()
         return False
+
+    def _move_anchor(self, previous: PointingVector | None) -> None:
+        self.previous_anchor = previous
+        self.anchor = self.filtered_vector
+        self._clear_retarget()
+
+    def _clear_retarget(self) -> None:
+        self.retarget_reference = None
+        self.retarget_since = None
+
+    def _update_retarget(self, timestamp: float) -> bool:
+        """Riattiva quando il raggio si sposta e poi resta fermo sul nuovo punto.
+
+        Lo spostamento deve superare le soglie di cambio bersaglio rispetto
+        all'ultima attivazione, poi il raggio deve restare entro le soglie di
+        stabilità per confirmation_seconds: un dito che passa sopra gli oggetti
+        non li descrive tutti.
+        """
+        settings = self.settings
+        current = self.filtered_vector
+        if not settings.retarget_enabled or current is None or self.anchor is None:
+            return False
+
+        if not vector_moved(
+            self.anchor,
+            current,
+            min_angle_deg=settings.retarget_min_angle_deg,
+            min_shift_ratio=settings.retarget_min_shift_ratio,
+        ):
+            self._clear_retarget()
+            return False
+
+        if self.retarget_reference is None or vector_moved(
+            self.retarget_reference,
+            current,
+            min_angle_deg=settings.retarget_stable_angle_deg,
+            min_shift_ratio=settings.retarget_stable_shift_ratio,
+        ):
+            self.retarget_reference = current
+            self.retarget_since = timestamp
+            return False
+
+        assert self.retarget_since is not None
+        if timestamp - self.retarget_since < settings.confirmation_seconds:
+            return False
+
+        self._move_anchor(self.anchor)
+        return True
+
+    def cancel_activation(self) -> None:
+        """Annulla l'ultima attivazione che il cooldown non ha lasciato passare.
+
+        Così il gesto ancora mantenuto riprova al termine del cooldown invece
+        di restare in silenzio fino a un nuovo puntamento.
+        """
+        if self.previous_anchor is None:
+            self.active = False
+            self.anchor = None
+        else:
+            self.anchor = self.previous_anchor
+            self.previous_anchor = None
+        self._clear_retarget()
 
     def _tolerate_candidate_miss(self, timestamp: float) -> None:
         """Un fotogramma storto non azzera la conferma in corso.
@@ -332,6 +436,7 @@ class PointingGestureRecognizer:
                     PointingActivation(
                         handedness=hand.handedness,
                         ray=ray,
+                        tracker_key=tracker_key,
                     )
                 )
 
@@ -360,6 +465,11 @@ class PointingGestureRecognizer:
             activations=tuple(activations),
             overlays=tuple(overlays),
         )
+
+    def cancel(self, activation: PointingActivation) -> None:
+        tracker = self._trackers.get(activation.tracker_key)
+        if tracker is not None:
+            tracker.cancel_activation()
 
     def reset(self) -> None:
         self._trackers.clear()

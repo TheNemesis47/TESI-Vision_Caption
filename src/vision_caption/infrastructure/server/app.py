@@ -290,6 +290,19 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         min_pointing_vector_length=(
             settings.pointing.gesture.min_pointing_vector_length
         ),
+        retarget_enabled=settings.pointing.gesture.retarget_enabled,
+        retarget_min_angle_deg=(
+            settings.pointing.gesture.retarget_min_angle_deg
+        ),
+        retarget_min_shift_ratio=(
+            settings.pointing.gesture.retarget_min_shift_ratio
+        ),
+        retarget_stable_angle_deg=(
+            settings.pointing.gesture.retarget_stable_angle_deg
+        ),
+        retarget_stable_shift_ratio=(
+            settings.pointing.gesture.retarget_stable_shift_ratio
+        ),
     )
 
     def create_pipeline() -> CaptionPipeline:

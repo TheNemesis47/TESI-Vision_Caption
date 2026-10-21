@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from vision_caption.core.domain.hand_pose import (
@@ -242,3 +244,100 @@ def test_stable_pose_activates_once_then_requires_release() -> None:
     assert recognizer.update((hand,), timestamp=0.5).activations == ()
     second_activation = recognizer.update((hand,), timestamp=0.71)
     assert len(second_activation.activations) == 1
+
+
+def _aimed(hand: HandObservation, tip_x: float, tip_y: float) -> HandObservation:
+    image = list(hand.image_landmarks)
+    image[HandLandmark.INDEX_FINGER_TIP.value] = ImageLandmark(
+        x=tip_x,
+        y=tip_y,
+        z=0.0,
+    )
+    return hand.model_copy(update={"image_landmarks": tuple(image)})
+
+
+def _retarget_settings() -> GestureRecognizerSettings:
+    return GestureRecognizerSettings(
+        angle_ema_alpha=1.0,
+        ray_ema_alpha=1.0,
+        confirmation_seconds=0.2,
+        release_seconds=0.1,
+    )
+
+
+def test_moving_held_finger_to_new_target_activates_again() -> None:
+    recognizer = PointingGestureRecognizer(_retarget_settings())
+    first_target = _pointing_hand()
+    second_target = _aimed(first_target, 0.35, 0.7)
+
+    recognizer.update((first_target,), timestamp=0.0)
+    assert len(recognizer.update((first_target,), timestamp=0.25).activations) == 1
+    assert recognizer.update((first_target,), timestamp=0.35).activations == ()
+
+    assert recognizer.update((second_target,), timestamp=0.45).activations == ()
+    assert recognizer.update((second_target,), timestamp=0.55).activations == ()
+    retargeted = recognizer.update((second_target,), timestamp=0.7)
+    assert len(retargeted.activations) == 1
+    assert retargeted.overlays[0].state == PointingOverlayState.ACTIVE
+
+    assert recognizer.update((second_target,), timestamp=1.0).activations == ()
+
+
+def test_sweeping_finger_does_not_describe_every_object() -> None:
+    recognizer = PointingGestureRecognizer(_retarget_settings())
+    hand = _pointing_hand()
+    recognizer.update((hand,), timestamp=0.0)
+    assert len(recognizer.update((hand,), timestamp=0.25).activations) == 1
+
+    for step, angle_deg in enumerate((30, 45, 60, 75, 90, 105)):
+        angle = math.radians(angle_deg)
+        sweeping = _aimed(
+            hand,
+            0.35 + 0.2 * math.cos(angle),
+            0.5 + 0.2 * math.sin(angle),
+        )
+        result = recognizer.update((sweeping,), timestamp=0.35 + 0.1 * step)
+        assert result.activations == ()
+
+
+def test_small_tremor_does_not_retarget() -> None:
+    recognizer = PointingGestureRecognizer(_retarget_settings())
+    hand = _pointing_hand()
+    recognizer.update((hand,), timestamp=0.0)
+    recognizer.update((hand,), timestamp=0.25)
+
+    trembling = _aimed(hand, 0.55, 0.53)
+    for step in range(6):
+        result = recognizer.update((trembling,), timestamp=0.35 + 0.1 * step)
+        assert result.activations == ()
+
+
+def test_cancelled_activation_is_retried_while_gesture_is_held() -> None:
+    recognizer = PointingGestureRecognizer(_retarget_settings())
+    hand = _pointing_hand()
+
+    recognizer.update((hand,), timestamp=0.0)
+    blocked = recognizer.update((hand,), timestamp=0.25).activations
+    assert len(blocked) == 1
+    recognizer.cancel(blocked[0])
+
+    assert recognizer.update((hand,), timestamp=0.35).activations == ()
+    assert len(recognizer.update((hand,), timestamp=0.6).activations) == 1
+
+
+def test_retarget_can_be_disabled() -> None:
+    settings = GestureRecognizerSettings(
+        angle_ema_alpha=1.0,
+        ray_ema_alpha=1.0,
+        confirmation_seconds=0.2,
+        retarget_enabled=False,
+    )
+    recognizer = PointingGestureRecognizer(settings)
+    hand = _pointing_hand()
+    second_target = _aimed(hand, 0.35, 0.7)
+
+    recognizer.update((hand,), timestamp=0.0)
+    recognizer.update((hand,), timestamp=0.25)
+    for step in range(5):
+        result = recognizer.update((second_target,), timestamp=0.35 + 0.1 * step)
+        assert result.activations == ()
