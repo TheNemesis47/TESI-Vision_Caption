@@ -103,6 +103,8 @@ class PointingActivation:
     handedness: Handedness
     ray: PointingRay
     tracker_key: str = ""
+    # True quando il dito, rimasto puntato, si è spostato su un altro oggetto.
+    retarget: bool = False
 
 
 @dataclass(frozen=True)
@@ -437,6 +439,7 @@ class PointingGestureRecognizer:
                         handedness=hand.handedness,
                         ray=ray,
                         tracker_key=tracker_key,
+                        retarget=tracker.previous_anchor is not None,
                     )
                 )
 

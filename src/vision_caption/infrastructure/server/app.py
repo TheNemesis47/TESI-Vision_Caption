@@ -3,6 +3,10 @@ from loguru import logger
 from vision_caption.infrastructure.settings import AppSettings
 from vision_caption.infrastructure.server.ws_handler import router as ws_router
 from vision_caption.infrastructure.server.static_frontend import mount_frontend
+from vision_caption.infrastructure.server.research import (
+    ResearchSessions,
+    router as research_router,
+)
 
 # Import dei componenti di dominio e porte
 from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
@@ -12,6 +16,7 @@ from vision_caption.core.domain.hand_pose import HandPoseResult
 from vision_caption.core.domain.pointing import PointingEvent
 from vision_caption.core.domain.pointing_caption import PointingCaption
 from vision_caption.core.ports.pointing_image_preparer_port import PointingImages
+from vision_caption.core.ports.research_recorder_port import ResearchRecorderPort
 
 # Import dei componenti reali (adapters e services)
 from vision_caption.adapters.hand_tracking.mediapipe_hand_pose_estimator import (
@@ -305,7 +310,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ),
     )
 
-    def create_pipeline() -> CaptionPipeline:
+    def create_pipeline(
+        research_recorder: ResearchRecorderPort | None = None,
+    ) -> CaptionPipeline:
         if use_mocks:
             hand_pose_estimator = MockHandPoseEstimator()
         else:
@@ -326,6 +333,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             image_preparer=image_preparer,
             caption_generator=pointing_caption_generator,
             speech_synthesizer=speech_synthesizer,
+            research_recorder=research_recorder,
         )
         return CaptionPipeline(
             scene_detector=scene_detector,
@@ -342,15 +350,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             caption_similarity_threshold=(
                 settings.auto.caption_similarity_threshold
             ),
+            research_recorder=research_recorder,
         )
 
     # Lo stato temporale POINTING e il rate limiter nascono per connessione.
     app.state.pipeline_factory = create_pipeline
     # Compatibilità con integrazioni che recuperano ancora una pipeline diretta.
     app.state.pipeline = create_pipeline()
+    app.state.research_sessions = ResearchSessions(settings)
 
     # Registriamo le rotte del websocket
     app.include_router(ws_router)
+    app.include_router(research_router)
 
     # Health check
     @app.get("/health")

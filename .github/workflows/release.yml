@@ -60,7 +60,9 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          build-args: TORCH_VARIANT=${{ matrix.torch }}
+          build-args: |
+            TORCH_VARIANT=${{ matrix.torch }}
+            GIT_COMMIT=${{ github.sha }}
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ steps.version.outputs.value }}${{ matrix.suffix }}

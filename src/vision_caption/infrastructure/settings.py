@@ -281,6 +281,16 @@ class PointingSettings(SettingsModel):
     debug: PointingDebugSettings = Field(default_factory=PointingDebugSettings)
 
 
+class ResearchSettings(SettingsModel):
+    """Log degli eventi per lo studio, separato dal log tecnico."""
+
+    enabled: bool = True
+    output_dir: Path = Path("logs/research")
+    # Testo detto al partecipante e letto dalla scena. Spento, restano tempi,
+    # esiti e lunghezze ma non le parole.
+    include_text: bool = True
+
+
 class AppSettings(SettingsModel):
     server: ServerSettings = Field(default_factory=ServerSettings)
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
@@ -288,6 +298,7 @@ class AppSettings(SettingsModel):
     tts: TtsSettings = Field(default_factory=TtsSettings)
     auto: AutoCaptionSettings = Field(default_factory=AutoCaptionSettings)
     pointing: PointingSettings = Field(default_factory=PointingSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
 
     @classmethod
     def from_env(
@@ -561,5 +572,10 @@ class AppSettings(SettingsModel):
                         "artifacts/pointing_debug",
                     ),
                 ),
+            ),
+            research=ResearchSettings(
+                enabled=value("RESEARCH_LOG_ENABLED", True),
+                output_dir=value("RESEARCH_LOG_DIR", "logs/research"),
+                include_text=value("RESEARCH_LOG_TEXT", True),
             ),
         )

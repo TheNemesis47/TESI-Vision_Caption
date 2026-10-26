@@ -281,6 +281,31 @@ Il server invia tre tipi JSON sullo stesso endpoint `/ws/vision`:
 `CANDIDATE`/`ACTIVE`, progresso di conferma e stile del corridoio. Il contratto
 frontend completo è in `Docs/handoff_frontend_pointing_overlay.md`.
 
+### Log di ricerca
+
+Ogni connessione WebSocket scrive un file `logs/research/<data>_<sessione>.jsonl`,
+separato dal log tecnico, con un evento JSON per riga. Ogni riga ha
+`schema_version`, `session_id`, `seq`, `ts` (UTC), `t` (secondi dall'inizio
+della sessione) ed `event`.
+
+| Evento | Cosa registra |
+|---|---|
+| `session_start` | partecipante e compito (`/ws/vision?pid=P07&task=T2`), user agent, commit, tutta la configurazione senza chiavi |
+| `mode_change` | passaggio fra AUTO e POINTING |
+| `auto_frame` | esito della cascata per ogni frame AUTO, tempi, classi rilevate |
+| `utterance` | ciò che è stato detto: testo, durata audio, ritardo dal frame all'invio |
+| `utterance_skipped` | descrizione AUTO taciuta perché uguale alla precedente |
+| `pointing_activation` | gesto confermato, nuovo o spostamento su un altro bersaglio |
+| `pointing_blocked` | gesto scartato dall'attesa fra un evento e l'altro |
+| `pointing_result` | bersaglio, testo letto, confidenze, richiesta di ripuntare, tempi |
+| `frames_dropped` | frame scartati perché il server era indietro |
+| `marker` | nota del ricercatore: `curl -X POST .../api/research/marker -H 'Content-Type: application/json' -d '{"label":"inizio compito 2"}'` |
+| `error`, `session_end` | errori e riepilogo della connessione |
+
+Non contiene immagini. `RESEARCH_LOG_TEXT=false` toglie anche le parole e
+lascia tempi, esiti e lunghezze. `scripts/summarize_research_log.py` ne ricava
+una riga per sessione, anche in CSV.
+
 ---
 
 ## Deploy frontend e Cloudflare Tunnel

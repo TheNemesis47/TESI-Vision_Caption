@@ -32,7 +32,7 @@ class DisconnectingWebSocket:
         self.accepted = False
         self.sent_messages: list[dict] = []
         self.app = SimpleNamespace(
-            state=SimpleNamespace(pipeline_factory=lambda: pipeline)
+            state=SimpleNamespace(pipeline_factory=lambda _research: pipeline)
         )
 
     async def accept(self) -> None:
@@ -138,7 +138,7 @@ class OneFrameWebSocket:
         self._slow_message_type = slow_message_type
         self.app = SimpleNamespace(
             state=SimpleNamespace(
-                pipeline_factory=lambda: pipeline,
+                pipeline_factory=lambda _research: pipeline,
                 settings=settings or AppSettings(),
             )
         )

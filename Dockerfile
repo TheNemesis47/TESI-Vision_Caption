@@ -65,7 +65,12 @@ RUN useradd --create-home --uid 10001 vision \
  && chown -R vision:vision /app
 USER vision
 
-ENV PATH="/app/.venv/bin:${PATH}" \
+# Il commit da cui è costruita l'immagine: ogni sessione del log di ricerca lo
+# riporta, e qui la cartella .git non c'è.
+ARG GIT_COMMIT=unknown
+
+ENV GIT_COMMIT=${GIT_COMMIT} \
+    PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     SERVER_HOST=0.0.0.0 \
     SERVER_PORT=8765 \

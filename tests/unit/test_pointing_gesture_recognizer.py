@@ -271,13 +271,16 @@ def test_moving_held_finger_to_new_target_activates_again() -> None:
     second_target = _aimed(first_target, 0.35, 0.7)
 
     recognizer.update((first_target,), timestamp=0.0)
-    assert len(recognizer.update((first_target,), timestamp=0.25).activations) == 1
+    first = recognizer.update((first_target,), timestamp=0.25).activations
+    assert len(first) == 1
+    assert not first[0].retarget
     assert recognizer.update((first_target,), timestamp=0.35).activations == ()
 
     assert recognizer.update((second_target,), timestamp=0.45).activations == ()
     assert recognizer.update((second_target,), timestamp=0.55).activations == ()
     retargeted = recognizer.update((second_target,), timestamp=0.7)
     assert len(retargeted.activations) == 1
+    assert retargeted.activations[0].retarget
     assert retargeted.overlays[0].state == PointingOverlayState.ACTIVE
 
     assert recognizer.update((second_target,), timestamp=1.0).activations == ()

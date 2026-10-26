@@ -37,6 +37,7 @@ class FrameMetrics:
     first_audio_ms: float | None = None
     frame_age_at_first_audio_s: float | None = None
     detections: int = 0
+    detected_classes: list[str] = field(default_factory=list)
     chunks_emitted: int = 0
     chunks_deduplicated: int = 0
 
@@ -49,8 +50,8 @@ class FrameMetrics:
         """Millisecondi trascorsi dall'inizio dell'elaborazione del frame."""
         return (time.perf_counter() - self._started_at) * 1000.0
 
-    def emit(self, outcome: str) -> None:
-        """Registra l'esito e scrive la riga di misura."""
+    def emit(self, outcome: str) -> dict:
+        """Registra l'esito, scrive la riga di misura e la restituisce."""
         self.outcome = outcome
         payload = {
             key: value
@@ -59,3 +60,4 @@ class FrameMetrics:
         }
         payload["total_ms"] = round(self.elapsed_ms(), 1)
         logger.debug(f"{METRIC_PREFIX} {json.dumps(payload)}")
+        return payload

@@ -8,12 +8,25 @@ from loguru import logger
 from vision_caption.core.domain.detection import Detection
 from vision_caption.core.domain.frame import CaptionMode, Frame
 from vision_caption.core.domain.pointing import HandLandmarks, PointingOverlay
+from vision_caption.core.ports.research_recorder_port import (
+    NullResearchRecorder,
+)
 from vision_caption.infrastructure.settings import (
     AppSettings,
     PointingCorridorSettings,
 )
 
 router = APIRouter()
+
+# Il codice partecipante e il compito arrivano nell'URL del WebSocket
+# (?pid=P07&task=T2): sono etichette brevi, non dati da conservare interi.
+RESEARCH_LABEL_MAX_LENGTH = 64
+
+
+def _research_label(websocket: WebSocket, name: str) -> str | None:
+    query_params = getattr(websocket, "query_params", None) or {}
+    value = (query_params.get(name) or "").strip()
+    return value[:RESEARCH_LABEL_MAX_LENGTH] or None
 
 
 @router.websocket("/ws/vision")
@@ -43,9 +56,30 @@ async def vision_websocket(websocket: WebSocket) -> None:
         return
 
     logger.info("New client connected via WebSocket.")
+    research_sessions = getattr(websocket.app.state, "research_sessions", None)
+    headers = getattr(websocket, "headers", None) or {}
+    research = (
+        research_sessions.open(
+            participant_id=_research_label(websocket, "pid"),
+            task_id=_research_label(websocket, "task"),
+            user_agent=headers.get("user-agent"),
+        )
+        if research_sessions is not None
+        else NullResearchRecorder()
+    )
     pipeline_factory = getattr(websocket.app.state, "pipeline_factory", None)
     owns_pipeline = pipeline_factory is not None
-    pipeline = pipeline_factory() if owns_pipeline else websocket.app.state.pipeline
+    pipeline = (
+        pipeline_factory(research)
+        if owns_pipeline
+        else websocket.app.state.pipeline
+    )
+    current_mode: CaptionMode | None = None
+    frames_processed = 0
+    frames_dropped = 0
+    utterances = 0
+    speech_seconds = 0.0
+    end_reason = "client_disconnected"
     corridor_settings: PointingCorridorSettings = settings.pointing.corridor
 
     async def send_optional_message(message: dict) -> None:
@@ -122,6 +156,12 @@ async def vision_websocket(websocket: WebSocket) -> None:
                     break
 
             if skipped_frames > 0:
+                frames_dropped += skipped_frames
+                research.record(
+                    "frames_dropped",
+                    count=skipped_frames,
+                    kept_frame_id=data.get("frame_id"),
+                )
                 logger.warning(
                     f"Skipped {skipped_frames} outdated frames to reduce lag. "
                     f"Processing only frame_id: {data.get('frame_id')}"
@@ -136,6 +176,15 @@ async def vision_websocket(websocket: WebSocket) -> None:
                 caption_mode=data["caption_mode"],
                 pointing_coordinates=data.get("pointing_coordinates"),
             )
+            if frame.caption_mode != current_mode:
+                research.record(
+                    "mode_change",
+                    frame_id=frame.frame_id,
+                    previous=current_mode.value if current_mode else None,
+                    current=frame.caption_mode.value,
+                )
+                current_mode = frame.caption_mode
+            frames_processed += 1
 
             frame_started_at = time.perf_counter()
             try:
@@ -158,6 +207,22 @@ async def vision_websocket(websocket: WebSocket) -> None:
                             "duration": result.audio.audio_duration,
                             "format": result.audio.audio_format,
                         }
+                    )
+                    utterances += 1
+                    speech_seconds += result.audio.audio_duration
+                    research.record(
+                        "utterance",
+                        mode=frame.caption_mode.value,
+                        frame_id=result.frame_id,
+                        text=result.caption,
+                        chars=len(result.caption),
+                        audio_duration_s=round(result.audio.audio_duration, 3),
+                        # Dalla ricezione del frame all'invio dell'audio: il
+                        # tempo di rete e di riproduzione sul telefono resta fuori.
+                        frame_to_audio_ms=round(
+                            (time.perf_counter() - frame_started_at) * 1000.0,
+                            1,
+                        ),
                     )
                     logger.info(
                         "Sending audio response chunk: "
@@ -186,8 +251,25 @@ async def vision_websocket(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         logger.warning("Client disconnected from WebSocket.")
-    except Exception:
+    except Exception as error:
+        end_reason = "server_error"
+        research.record(
+            "error",
+            component="websocket",
+            error_type=type(error).__name__,
+            message=str(error)[:500],
+        )
         logger.exception("Error in WebSocket processing")
     finally:
+        research.record(
+            "session_end",
+            reason=end_reason,
+            frames_processed=frames_processed,
+            frames_dropped=frames_dropped,
+            utterances=utterances,
+            speech_seconds=round(speech_seconds, 3),
+        )
+        if research_sessions is not None:
+            research_sessions.close(research)
         if owns_pipeline:
             await pipeline.close()

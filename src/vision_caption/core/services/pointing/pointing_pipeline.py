@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
-from time import monotonic
+from time import monotonic, perf_counter
 
 from vision_caption.core.domain.captionResult import CaptionResult
 from vision_caption.core.domain.frame import Frame
@@ -22,6 +22,10 @@ from vision_caption.core.ports.pointing_caption_generator_port import (
 )
 from vision_caption.core.ports.pointing_image_preparer_port import (
     PointingImagePreparerPort,
+)
+from vision_caption.core.ports.research_recorder_port import (
+    NullResearchRecorder,
+    ResearchRecorderPort,
 )
 from vision_caption.core.services.pointing.gesture_recognizer import (
     PointingGestureRecognizer,
@@ -76,6 +80,24 @@ def compose_accessibility_caption(
     return f"{object_caption}{separator}C'è scritto: {visible_text}"
 
 
+def _caption_fields(caption: PointingCaption) -> dict:
+    """Ciò che il modello ha capito del bersaglio, per l'analisi dello studio."""
+    return {
+        "target": caption.target,
+        "description": caption.description,
+        "visible_text": caption.visible_text,
+        "confidence": caption.confidence,
+        "text_confidence": caption.text_confidence,
+        "text_complete": caption.text_complete,
+        "needs_repointing": caption.needs_repointing,
+        "needs_closer_view": caption.needs_closer_view,
+        "alternatives": list(caption.alternatives),
+        "candidate_labels": [
+            candidate.label for candidate in caption.candidates
+        ],
+    }
+
+
 class PointingPipeline:
     """Orchestra un evento POINTING completo per una singola sessione."""
 
@@ -88,6 +110,7 @@ class PointingPipeline:
         caption_generator: PointingCaptionGeneratorPort,
         speech_synthesizer: SpeechSynthesizerPort,
         clock: Callable[[], float] = monotonic,
+        research_recorder: ResearchRecorderPort | None = None,
     ) -> None:
         self._hand_pose_estimator = hand_pose_estimator
         self._gesture_recognizer = gesture_recognizer
@@ -96,6 +119,7 @@ class PointingPipeline:
         self._caption_generator = caption_generator
         self._speech_synthesizer = speech_synthesizer
         self._clock = clock
+        self._research = research_recorder or NullResearchRecorder()
 
     async def process(
         self,
@@ -127,24 +151,67 @@ class PointingPipeline:
                 # Un'attivazione bloccata dal cooldown non va persa: il
                 # riconoscitore la ripropone se il gesto è ancora mantenuto.
                 self._gesture_recognizer.cancel(candidate)
+                self._research.record(
+                    "pointing_blocked",
+                    frame_id=frame.frame_id,
+                    reason="cooldown" if activation is None else "other_hand",
+                    handedness=candidate.handedness.value,
+                    retarget=candidate.retarget,
+                )
         if activation is None:
             return
+
+        self._research.record(
+            "pointing_activation",
+            frame_id=frame.frame_id,
+            handedness=activation.handedness.value,
+            retarget=activation.retarget,
+            ray=activation.ray.model_dump(mode="json"),
+        )
 
         event = PointingEvent(
             handedness=activation.handedness,
             ray=activation.ray,
             frame_id=frame.frame_id,
         )
+        started_at = perf_counter()
         images = await self._image_preparer.prepare(frame, event)
+        prepared_at = perf_counter()
         caption = await self._caption_generator.generate(event, images)
+        captioned_at = perf_counter()
+        timings = {
+            "prepare_ms": round((prepared_at - started_at) * 1000.0, 1),
+            "vlm_ms": round((captioned_at - prepared_at) * 1000.0, 1),
+        }
         if caption is None:
+            self._research.record(
+                "pointing_result",
+                frame_id=frame.frame_id,
+                outcome="no_caption",
+                **timings,
+            )
             return
 
         spoken_caption = compose_accessibility_caption(caption)
         if spoken_caption is None:
+            self._research.record(
+                "pointing_result",
+                frame_id=frame.frame_id,
+                outcome="empty_caption",
+                **timings,
+                **_caption_fields(caption),
+            )
             return
 
         audio = await self._speech_synthesizer.synthesize(spoken_caption)
+        self._research.record(
+            "pointing_result",
+            frame_id=frame.frame_id,
+            outcome="spoken",
+            **timings,
+            tts_ms=round((perf_counter() - captioned_at) * 1000.0, 1),
+            **_caption_fields(caption),
+        )
         yield CaptionResult(
             frame_id=frame.frame_id,
             caption=spoken_caption,

@@ -7,6 +7,10 @@ from loguru import logger
 from vision_caption.core.ports.SceneDetectorPort import SceneDetectorPort
 from vision_caption.core.ports.CaptionGeneratorPort import CaptionGeneratorPort
 from vision_caption.core.ports.SpeechSynthesizerPort import SpeechSynthesizerPort
+from vision_caption.core.ports.research_recorder_port import (
+    NullResearchRecorder,
+    ResearchRecorderPort,
+)
 from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.domain.frame import Frame, CaptionMode
@@ -26,6 +30,7 @@ class CaptionPipeline:
         max_frame_age_seconds: float = 3.0,
         vlm_chunk_timeout_seconds: float = 3.0,
         caption_similarity_threshold: float = 0.85,
+        research_recorder: ResearchRecorderPort | None = None,
     ):
         self._scene_detector = scene_detector
         self._caption_generator = caption_generator
@@ -35,6 +40,7 @@ class CaptionPipeline:
         self._max_frame_age_seconds = max_frame_age_seconds
         self._vlm_chunk_timeout_seconds = vlm_chunk_timeout_seconds
         self._caption_similarity_threshold = caption_similarity_threshold
+        self._research = research_recorder or NullResearchRecorder()
         self._last_caption = ""
         self._last_mode: CaptionMode | None = None
 
@@ -87,6 +93,9 @@ class CaptionPipeline:
             )
         metrics.ssim_score = scene_result.ssim_score
         metrics.detections = len(scene_result.detections)
+        metrics.detected_classes = [
+            detection.class_name for detection in scene_result.detections
+        ]
         logger.debug(
             "Scene detection completed in "
             f"{(t_detect_end - t_detect_start) * 1000:.1f}ms "
@@ -94,7 +103,10 @@ class CaptionPipeline:
         )
 
         if not scene_result.is_change:
-            metrics.emit(f"suppressed_{scene_result.suppressed_by or 'unknown'}")
+            self._emit_metrics(
+                metrics,
+                f"suppressed_{scene_result.suppressed_by or 'unknown'}",
+            )
             return
             
         # Verifichiamo se è trascorso l'intervallo minimo di rate limit
@@ -103,7 +115,7 @@ class CaptionPipeline:
                 "Change detected, but rate limiter blocked execution "
                 "(too frequent)."
             )
-            metrics.emit("rate_limited")
+            self._emit_metrics(metrics, "rate_limited")
             return
         
         logger.info("Significant scene change detected! Starting captioning pipeline...")
@@ -122,7 +134,7 @@ class CaptionPipeline:
                 f"Frame {frame.frame_id} già obsoleto ({frame_age():.2f}s > "
                 f"{self._max_frame_age_seconds}s) prima del VLM. Pipeline saltata."
             )
-            metrics.emit("stale_pre_vlm")
+            self._emit_metrics(metrics, "stale_pre_vlm")
             return
 
         # Chiamata al generatore di didascalie (passando il frame) IN STREAMING
@@ -193,6 +205,14 @@ class CaptionPipeline:
                         f"({caption_similarity:.3f}); saltata."
                     )
                     metrics.chunks_deduplicated += 1
+                    self._research.record(
+                        "utterance_skipped",
+                        mode=CaptionMode.AUTO.value,
+                        frame_id=frame.frame_id,
+                        reason="similar_to_previous",
+                        similarity=round(caption_similarity, 3),
+                        text=chunk_text,
+                    )
                     continue
 
                 # Sintesi vocale per il pezzettino
@@ -236,9 +256,16 @@ class CaptionPipeline:
             )
             if outcome == "completed" and metrics.chunks_emitted == 0:
                 outcome = "no_audio"
-            metrics.emit(outcome)
+            self._emit_metrics(metrics, outcome)
 
         logger.info("Total AUTO streaming frame processing completed.")
+
+    def _emit_metrics(
+        self,
+        metrics: FrameMetrics,
+        outcome: str,
+    ) -> None:
+        self._research.record("auto_frame", **metrics.emit(outcome))
 
     async def close(self) -> None:
         if self._pointing_pipeline is not None:
