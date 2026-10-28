@@ -64,6 +64,21 @@ services:
       - server
     restart: unless-stopped
 
+  # Tunnel Cloudflare con nome: pubblica il client su un dominio proprio, in
+  # HTTPS, senza aprire porte sulla rete. Il tunnel e l'hostname si creano nel
+  # pannello Zero Trust, con l'hostname che punta a http://client:80; il token
+  # va in CLOUDFLARE_TUNNEL_TOKEN nel .env.
+  #   docker compose --profile tunnel up -d tunnel
+  tunnel:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - client
+    restart: unless-stopped
+
   # ---------------------------------------------------------------- locale
   ollama:
     profiles: ["local-vlm"]
