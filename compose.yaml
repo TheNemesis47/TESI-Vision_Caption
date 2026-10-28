@@ -72,6 +72,13 @@ services:
       - ollama-models:/root/.ollama
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
+    # Il server impiega qualche secondo ad aprire la porta: chi dipende da
+    # Ollama aspetta che risponda, non solo che il contenitore sia partito.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   # Il primo avvio non ha ancora il modello: questo servizio lo scarica e si
@@ -84,7 +91,8 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     restart: "no"
 
   chatterbox:
