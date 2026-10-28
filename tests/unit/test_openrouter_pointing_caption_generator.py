@@ -155,3 +155,19 @@ def test_lesson_context_adds_classroom_instructions() -> None:
     assert "lezione" not in general
     assert "lezione in aula" in lesson
     assert lesson.rstrip().endswith("}")
+
+
+def test_local_models_get_no_constrained_json_mode() -> None:
+    cloud = build_pointing_payload(
+        event=_event(), images=_images(), model_name="m", max_tokens=10
+    )
+    local = build_pointing_payload(
+        event=_event(),
+        images=_images(),
+        model_name="m",
+        max_tokens=10,
+        json_mode=False,
+    )
+
+    assert cloud["response_format"] == {"type": "json_object"}
+    assert "response_format" not in local

@@ -92,6 +92,7 @@ def build_pointing_payload(
     max_tokens: int,
     temperature: float = 0.1,
     context: CaptionContext = "general",
+    json_mode: bool = True,
 ) -> dict:
     content: list[dict] = [
         {"type": "text", "text": build_pointing_prompt(event, context)},
@@ -105,13 +106,18 @@ def build_pointing_payload(
     content.extend(
         _image_content("IMMAGINE 3 - SCENA PULITA PER OCR", images.clean_jpeg)
     )
-    return {
+    payload = {
         "model": model_name,
         "messages": [{"role": "user", "content": content}],
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
     }
+    # Con Ollama la modalità JSON vincolata può non chiudere mai l'oggetto e
+    # generare spazi fino a riempire il contesto: in locale basta il prompt,
+    # e parse_pointing_caption accetta anche il JSON fra backtick.
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    return payload
 
 
 def _extract_assistant_content(payload: dict) -> str | None:
@@ -168,9 +174,11 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
         temperature: float = 0.1,
         client: httpx.AsyncClient | None = None,
         context: CaptionContext = "general",
+        json_mode: bool = True,
     ) -> None:
         self._api_key = api_key
         self._context = context
+        self._json_mode = json_mode
         self._model_name = model_name
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._timeout_seconds = timeout_seconds
@@ -190,6 +198,7 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
             max_tokens=self._max_tokens,
             temperature=self._temperature,
             context=self._context,
+            json_mode=self._json_mode,
         )
         headers = {
             "Content-Type": "application/json",

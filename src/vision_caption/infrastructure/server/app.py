@@ -226,6 +226,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             max_tokens=settings.pointing.vlm.max_output_tokens,
             temperature=settings.pointing.vlm.temperature,
             context=settings.vlm.context,
+            json_mode=vlm_provider == "openrouter",
         )
         media_pipe_settings = MediaPipeHandPoseSettings(
             model_path=settings.pointing.media_pipe.model_path,

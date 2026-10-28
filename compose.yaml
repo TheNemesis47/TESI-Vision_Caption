@@ -95,6 +95,9 @@ services:
       # Il modello resta in GPU anche nelle pause della lezione: ricaricarlo
       # costa più del tempo massimo concesso a una descrizione.
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
+      # Le tre immagini del puntamento valgono circa tremila token: con i 4096
+      # predefiniti la risposta non ci stava.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
     volumes:
       - ollama-models:/root/.ollama
     ports:
