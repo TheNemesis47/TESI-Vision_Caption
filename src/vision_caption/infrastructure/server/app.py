@@ -37,6 +37,7 @@ from vision_caption.adapters.vlm.OpenRouterPointingCaptionGenerator import (
 )
 from vision_caption.adapters.tts.ChatterboxSynthesizer import ChatterboxSynthesizer
 from vision_caption.adapters.tts.ElevenLabsSynthesizer import ElevenLabsSynthesizer
+from vision_caption.adapters.tts.FishSpeechSynthesizer import FishSpeechSynthesizer
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.services.caption_pipeline import CaptionPipeline
 from vision_caption.core.services.pointing.gesture_recognizer import (
@@ -232,6 +233,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 voice_id=settings.tts.elevenlabs_voice_id,
                 model_id=settings.tts.elevenlabs_model_id,
                 timeout_seconds=settings.tts.elevenlabs_timeout_seconds,
+            )
+        elif settings.tts.resolved_provider == "fish":
+            logger.info(f"TTS: Fish Speech locale su {settings.tts.fish_url}.")
+            speech_synthesizer = FishSpeechSynthesizer(
+                base_url=settings.tts.fish_url,
+                timeout_seconds=settings.tts.fish_timeout_seconds,
+                reference_id=settings.tts.fish_reference_id,
+                seed=settings.tts.fish_seed,
+                temperature=settings.tts.fish_temperature,
+                top_p=settings.tts.fish_top_p,
             )
         else:
             logger.info(f"TTS: Chatterbox locale su {settings.tts.chatterbox_url}.")

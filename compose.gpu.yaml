@@ -27,3 +27,8 @@ services:
     gpus: all
     environment:
       NVIDIA_VISIBLE_DEVICES: ${CHATTERBOX_GPUS:-all}
+
+  fish:
+    gpus: all
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${FISH_GPUS:-all}

@@ -3,6 +3,7 @@
 #   docker compose up -d                        tutto in cloud (OpenRouter + ElevenLabs)
 #   docker compose --profile local-vlm up -d    modello visivo in casa, con Ollama
 #   docker compose --profile local-tts up -d    voce in casa, con Chatterbox
+#   docker compose --profile local-tts-fish up -d    voce in casa, con Fish Speech
 #   docker compose --profile local-vlm --profile local-tts up -d     niente cloud
 #
 # Di suo nessun servizio chiede la GPU, così questo file parte anche su una
@@ -98,7 +99,45 @@ services:
       - "${CHATTERBOX_PORT:-4123}:4123"
     restart: unless-stopped
 
+  # Fish Speech con OpenAudio S1-mini: 0,5 miliardi di parametri, italiano
+  # compreso, pesi con licenza non commerciale (CC-BY-NC-SA 4.0). I modelli
+  # Fish più grandi chiedono 24 GB di GPU o più. L'immagine si costruisce dal
+  # commit di settembre 2025, l'ultimo il cui server parte con S1-mini.
+  fish:
+    profiles: ["local-tts-fish"]
+    build:
+      context: https://github.com/fishaudio/fish-speech.git#cccad3e098d97bf1cdcaefc6d149de091d4893da
+      dockerfile: docker/Dockerfile
+      target: server
+      args:
+        BACKEND: cuda
+    volumes:
+      - fish-checkpoints:/app/checkpoints
+    ports:
+      - "${FISH_PORT:-8081}:8080"
+    restart: unless-stopped
+
+  # Il modello è ad accesso controllato: si accettano le condizioni su
+  # https://huggingface.co/fishaudio/openaudio-s1-mini e si mette un token di
+  # lettura in HF_TOKEN nel .env. Poi, una volta sola:
+  #   docker compose --profile local-tts-fish run --rm fish-download
+  fish-download:
+    profiles: ["local-tts-fish"]
+    image: python:3.12-slim
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        pip install --quiet --root-user-action=ignore "huggingface_hub[cli]" &&
+        hf download fishaudio/openaudio-s1-mini
+        --local-dir /checkpoints/openaudio-s1-mini
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - fish-checkpoints:/checkpoints
+    restart: "no"
+
 volumes:
   server-logs:
+  fish-checkpoints:
   ollama-models:
   chatterbox-models:

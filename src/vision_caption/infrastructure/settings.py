@@ -64,6 +64,7 @@ DEFAULT_LOCAL_VLM_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_CLOUD_VLM_MODEL = "google/gemini-2.5-flash"
 DEFAULT_LOCAL_VLM_MODEL = "gemma3:4b"
 DEFAULT_LOCAL_TTS_URL = "http://localhost:4123"
+DEFAULT_FISH_TTS_URL = "http://localhost:8080"
 
 
 class VlmSettings(SettingsModel):
@@ -119,7 +120,8 @@ class TtsSettings(SettingsModel):
     chiave, un provider dichiarato senza le sue credenziali ferma l'avvio.
     """
 
-    provider: Literal["auto", "elevenlabs", "local"] = "auto"
+    # "local" è Chatterbox; "fish" è Fish Speech con OpenAudio S1-mini.
+    provider: Literal["auto", "elevenlabs", "local", "fish"] = "auto"
     elevenlabs_api_key: str = Field(default="", repr=False)
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model_id: str = "eleven_turbo_v2_5"
@@ -131,9 +133,21 @@ class TtsSettings(SettingsModel):
     chatterbox_exaggeration: float = Field(default=0.7, ge=0.0)
     chatterbox_cfg_weight: float = Field(default=0.4, ge=0.0)
     chatterbox_temperature: float = Field(default=0.9, ge=0.0)
+    fish_url: str = DEFAULT_FISH_TTS_URL
+    fish_timeout_seconds: float = Field(default=60.0, gt=0.0)
+    fish_reference_id: str = ""
+    # Senza voce di riferimento il seme tiene la stessa voce fra le frasi.
+    fish_seed: int | None = 42
+    fish_temperature: float = Field(default=0.7, ge=0.1, le=1.0)
+    fish_top_p: float = Field(default=0.7, ge=0.1, le=1.0)
+
+    @field_validator("fish_seed", mode="before")
+    @classmethod
+    def _empty_seed_is_random(cls, value: Any) -> Any:
+        return None if value == "" else value
 
     @property
-    def resolved_provider(self) -> Literal["elevenlabs", "local"]:
+    def resolved_provider(self) -> Literal["elevenlabs", "local", "fish"]:
         if self.provider != "auto":
             return self.provider
         return "elevenlabs" if self.elevenlabs_api_key else "local"
@@ -384,6 +398,12 @@ class AppSettings(SettingsModel):
                     "CHATTERBOX_TEMPERATURE",
                     0.9,
                 ),
+                fish_url=value("FISH_URL", DEFAULT_FISH_TTS_URL),
+                fish_timeout_seconds=value("FISH_TIMEOUT_SECONDS", 60.0),
+                fish_reference_id=value("FISH_REFERENCE_ID", ""),
+                fish_seed=value("FISH_SEED", 42),
+                fish_temperature=value("FISH_TEMPERATURE", 0.7),
+                fish_top_p=value("FISH_TOP_P", 0.7),
             ),
             auto=AutoCaptionSettings(
                 ssim=SsimSettings(

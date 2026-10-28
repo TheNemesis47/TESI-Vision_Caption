@@ -132,3 +132,17 @@ def test_il_vecchio_nome_dell_endpoint_continua_a_valere() -> None:
     )
 
     assert settings.vlm.resolved_base_url == "http://proxy/v1"
+
+
+def test_fish_si_sceglie_dichiarandolo() -> None:
+    settings = AppSettings.from_env(
+        {
+            "TTS_PROVIDER": "fish",
+            "FISH_URL": "http://fish:8080",
+            "FISH_SEED": "",
+        }
+    )
+
+    assert settings.tts.resolved_provider == "fish"
+    assert settings.tts.fish_url == "http://fish:8080"
+    assert settings.tts.fish_seed is None

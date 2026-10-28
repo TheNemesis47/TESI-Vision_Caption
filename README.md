@@ -117,7 +117,7 @@ può stare su un servizio esterno o sulla macchina, e la scelta è una riga.
 | | Cloud | In casa |
 |---|---|---|
 | **Modello visivo** | `VLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | `VLM_PROVIDER=local` + Ollama |
-| **Voce** | `TTS_PROVIDER=elevenlabs` + `ELEVENLABS_API_KEY` | `TTS_PROVIDER=local` + Chatterbox |
+| **Voce** | `TTS_PROVIDER=elevenlabs` + `ELEVENLABS_API_KEY` | `TTS_PROVIDER=local` + Chatterbox, oppure `TTS_PROVIDER=fish` + Fish Speech |
 
 Lasciandoli su `auto` decide la presenza della chiave: c'è, si va nel cloud;
 non c'è, si va in locale. Dichiarare il provider serve a sbagliare
@@ -134,6 +134,12 @@ docker compose --profile local-vlm run --rm ollama-pull
 # Voce in casa: Chatterbox, che va clonato accanto a questo repo
 git clone https://github.com/travisvn/chatterbox-tts-api ../chatterbox-tts-api
 docker compose --profile local-tts up -d
+
+# Voce in casa con Fish Speech (OpenAudio S1-mini, licenza non commerciale).
+# Il modello è ad accesso controllato: accettare le condizioni su
+# huggingface.co/fishaudio/openaudio-s1-mini e mettere HF_TOKEN nel .env.
+docker compose --profile local-tts-fish run --rm fish-download
+docker compose --profile local-tts-fish up -d
 
 # Tutto in casa, niente rete
 docker compose --profile local-vlm --profile local-tts up -d
