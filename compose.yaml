@@ -42,12 +42,17 @@ services:
       # Il checkpoint RF-DETR adattato: sta fuori dall'immagine perché pesa e
       # perché è materiale di chi lo ha addestrato.
       - ./models:/app/models:ro
-      # I log, compresi quelli di ricerca in logs/research, sopravvivono a un
-      # aggiornamento del contenitore. Un volume con nome, non una cartella
-      # dell'host: eredita i permessi dell'utente del contenitore, che su una
-      # cartella creata da Docker non potrebbe scrivere. Per copiarli fuori:
-      #   docker compose cp server:/app/logs/research ./research
-      - server-logs:/app/logs
+      # I log, compresi quelli di ricerca in logs/research, e le immagini di
+      # debug del puntamento sopravvivono a un aggiornamento del contenitore.
+      # Di base stanno in volumi con nome, che ereditano i permessi
+      # dell'utente del contenitore: su Linux una cartella creata da Docker
+      # resterebbe di root e non scrivibile. Su Windows e macOS si possono
+      # vedere direttamente nella cartella del progetto mettendo nel .env
+      #   SERVER_LOGS=./logs  e  SERVER_ARTIFACTS=./artifacts
+      # Altrimenti si copiano fuori con
+      #   docker compose cp server:/app/logs ./logs
+      - ${SERVER_LOGS:-server-logs}:/app/logs
+      - ${SERVER_ARTIFACTS:-server-artifacts}:/app/artifacts
     ports:
       - "${SERVER_PORT:-8765}:8765"
     restart: unless-stopped
@@ -165,6 +170,7 @@ services:
 
 volumes:
   server-logs:
+  server-artifacts:
   fish-checkpoints:
   ollama-models:
   chatterbox-models:
