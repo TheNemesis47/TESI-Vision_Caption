@@ -28,6 +28,10 @@ services:
         required: false
     environment:
       SERVER_HOST: 0.0.0.0
+      # Il modello della mano incluso nell'immagine. Sta qui e non nel .env
+      # perché il .env copiato da .env.example punta a models/, che nel
+      # contenitore è la cartella montata dall'host e di solito non lo ha.
+      HAND_LANDMARKER_MODEL_PATH: /app/bundled/hand_tracking/hand_landmarker.task
       # Gli indirizzi dei servizi locali stanno nel .env, non qui: imporli da
       # questo file li imporrebbe anche a chi ha scelto il cloud, e le
       # descrizioni finirebbero contro un Ollama che non è stato acceso.

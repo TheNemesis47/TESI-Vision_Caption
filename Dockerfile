@@ -50,10 +50,12 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Il modello dei landmark della mano è un file pubblico e stabile: sta
-# nell'immagine, così il contenitore parte senza scaricare nulla.
+# nell'immagine, così il contenitore parte senza scaricare nulla. Non va in
+# /app/models: compose ci monta sopra la cartella models dell'host, che lo
+# nasconderebbe.
 ADD --chmod=444 \
     https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task \
-    /app/models/hand_tracking/hand_landmarker.task
+    /app/bundled/hand_tracking/hand_landmarker.task
 
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
@@ -75,7 +77,7 @@ ENV GIT_COMMIT=${GIT_COMMIT} \
     SERVER_HOST=0.0.0.0 \
     SERVER_PORT=8765 \
     LOG_DIR=/app/logs \
-    HAND_LANDMARKER_MODEL_PATH=/app/models/hand_tracking/hand_landmarker.task \
+    HAND_LANDMARKER_MODEL_PATH=/app/bundled/hand_tracking/hand_landmarker.task \
     FRONTEND_DIST_PATH=/app/frontend
 
 EXPOSE 8765
