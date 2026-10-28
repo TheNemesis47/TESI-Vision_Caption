@@ -9,6 +9,7 @@
 # Di suo nessun servizio chiede la GPU, così questo file parte anche su una
 # macchina che non ne ha. Per usarla si aggiunge compose.gpu.yaml, una volta
 # sola, mettendo nel .env:  COMPOSE_FILE=compose.yaml:compose.gpu.yaml
+# e, perché valga anche su Windows, COMPOSE_PATH_SEPARATOR=:
 #
 # Le chiavi e le soglie stanno nel .env accanto a questo file: si parte da
 # .env.example. I profili accendono i servizi locali, il .env dice al server

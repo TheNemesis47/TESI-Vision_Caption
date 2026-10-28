@@ -80,6 +80,7 @@ installati lato Windows e `nvidia-container-toolkit` attivo:
 
 ```bash
 echo 'COMPOSE_FILE=compose.yaml:compose.gpu.yaml' >> .env
+echo 'COMPOSE_PATH_SEPARATOR=:' >> .env
 docker compose up -d
 ```
 
