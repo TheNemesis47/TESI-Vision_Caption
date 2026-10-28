@@ -264,3 +264,52 @@ async def test_auto_records_every_frame_and_skipped_repetitions() -> None:
     (skipped,) = recorder.named("utterance_skipped")
     assert skipped["reason"] == "similar_to_previous"
     assert skipped["text"] == "Una sedia."
+
+
+class BrokenGenerator:
+    async def generate(self, *args):
+        raise ConnectionError("ollama non risponde")
+        yield  # pragma: no cover
+
+
+@pytest.mark.asyncio
+async def test_auto_survives_a_failing_vlm() -> None:
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    recorder = MemoryRecorder()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=BrokenGenerator(),
+        speech_synthesizer=FakeSpeechSynthesizer(),
+        rate_limiter=rate_limiter,
+        research_recorder=recorder,
+    )
+
+    results = [_ async for _ in pipeline.process(_auto_frame(1))]
+
+    assert results == []
+    assert recorder.named("auto_frame")[0]["outcome"] == "vlm_error"
+    assert recorder.named("error")[0]["component"] == "vlm"
+    scene_detector.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pointing_survives_a_failing_vlm() -> None:
+    class FailingGenerator:
+        async def generate(self, event, images):
+            raise ConnectionError("ollama non risponde")
+
+    recorder = MemoryRecorder()
+    pipeline = _pointing_pipeline(recorder, _caption())
+    pipeline._caption_generator = FailingGenerator()
+
+    results = [_ async for _ in pipeline.process(_frame())]
+
+    assert results == []
+    (result,) = recorder.named("pointing_result")
+    assert result["outcome"] == "vlm_error"

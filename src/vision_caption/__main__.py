@@ -56,6 +56,11 @@ def _setup_file_logging(settings: ServerSettings):
     - Conserva gli ultimi 10 giorni di log, comprimendo i vecchi in .zip.
     Il percorso e il livello arrivano dalla configurazione centralizzata.
     """
+    # Anche la console segue LOG_LEVEL: a DEBUG i log WebSocket riportano
+    # indirizzo IP e cookie di chi si collega.
+    logger.remove()
+    logger.add(sys.stderr, level=settings.log_level)
+
     settings.log_dir.mkdir(parents=True, exist_ok=True)
     log_path = settings.log_dir / "vision_caption_{time:YYYY-MM-DD}.log"
     logger.add(

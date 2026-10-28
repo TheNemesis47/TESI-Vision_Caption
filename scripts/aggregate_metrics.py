@@ -26,7 +26,7 @@ CASCATA = [
     ("Superano il filtro semantico sulle classi", {"suppressed_semantic"}),
     ("Superano intervallo minimo e freschezza",
      {"rate_limited", "stale_pre_vlm"}),
-    ("Producono audio", {"vlm_timeout", "stale_pre_tts",
+    ("Producono audio", {"vlm_timeout", "vlm_error", "stale_pre_tts",
                          "stale_post_tts", "no_audio"}),
 ]
 

@@ -109,3 +109,36 @@ async def test_generator_returns_validated_caption() -> None:
 
     assert caption is not None
     assert caption.description == "Una scatola blu."
+
+
+@pytest.mark.asyncio
+async def test_local_server_without_key_gets_no_authorization_header() -> None:
+    seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(_caption_payload())
+                        },
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as client:
+        generator = OpenRouterPointingCaptionGenerator(
+            api_key="",
+            model_name="qwen3-vl:8b",
+            client=client,
+        )
+        await generator.generate(_event(), _images())
+
+    assert "authorization" not in seen[0].headers

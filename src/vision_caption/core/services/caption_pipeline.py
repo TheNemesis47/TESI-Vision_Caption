@@ -164,6 +164,20 @@ class CaptionPipeline:
                     )
                     outcome = "vlm_timeout"
                     break
+                except Exception as error:
+                    # Un modello irraggiungibile o una risposta malformata
+                    # costano questa descrizione, non l'intera sessione.
+                    logger.exception(
+                        f"VLM non disponibile sul frame {frame.frame_id}."
+                    )
+                    self._research.record(
+                        "error",
+                        component="vlm",
+                        error_type=type(error).__name__,
+                        message=str(error)[:500],
+                    )
+                    outcome = "vlm_error"
+                    break
 
                 if metrics.vlm_first_chunk_ms is None:
                     metrics.vlm_first_chunk_ms = round(

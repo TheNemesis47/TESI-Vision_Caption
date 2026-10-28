@@ -184,11 +184,14 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
             temperature=self._temperature,
         )
         headers = {
-            "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/vision-caption",
             "X-Title": "Vision Caption Server",
         }
+        # Un server locale come Ollama non vuole chiavi: "Bearer " vuoto è
+        # un header non valido e la richiesta non partirebbe nemmeno.
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
 
         if self._client is not None:
             response = await self._client.post(

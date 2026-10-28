@@ -1,6 +1,8 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from time import monotonic, perf_counter
 
+from loguru import logger
+
 from vision_caption.core.domain.captionResult import CaptionResult
 from vision_caption.core.domain.frame import Frame
 from vision_caption.core.domain.hand_pose import HandObservation
@@ -177,7 +179,20 @@ class PointingPipeline:
         started_at = perf_counter()
         images = await self._image_preparer.prepare(frame, event)
         prepared_at = perf_counter()
-        caption = await self._caption_generator.generate(event, images)
+        try:
+            caption = await self._caption_generator.generate(event, images)
+        except Exception as error:
+            # Il gesto è perso, la sessione no: si può ripuntare subito.
+            logger.exception(
+                f"VLM POINTING non disponibile sul frame {frame.frame_id}."
+            )
+            self._research.record(
+                "pointing_result",
+                frame_id=frame.frame_id,
+                outcome="vlm_error",
+                error_type=type(error).__name__,
+            )
+            return
         captioned_at = perf_counter()
         timings = {
             "prepare_ms": round((prepared_at - started_at) * 1000.0, 1),
