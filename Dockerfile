@@ -2,7 +2,8 @@
 #
 # Il pacchetto torch cambia con l'acceleratore, e il lock file ne fissa la
 # variante ROCm perché è quella della macchina di sviluppo. Qui torch viene
-# installato a parte, dall'indice scelto con TORCH_VARIANT:
+# installato a parte, dall'indice scelto con TORCH_VARIANT, e con lui resta
+# fuori triton-rocm, il compilatore per GPU AMD che il lock gli associa:
 #
 #   cu128     GPU NVIDIA (workstation, WSL2)   <- predefinito
 #   rocm7.2   GPU AMD
@@ -26,6 +27,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project \
       --no-install-package torch \
       --no-install-package torchvision \
+      --no-install-package triton-rocm \
  && uv pip install --no-cache \
       --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}" \
       torch torchvision
@@ -35,7 +37,8 @@ RUN uv sync --frozen --no-dev --no-install-project \
 COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable --inexact \
       --no-install-package torch \
-      --no-install-package torchvision
+      --no-install-package torchvision \
+      --no-install-package triton-rocm
 
 
 FROM ${PYTHON_IMAGE} AS runtime
@@ -52,7 +55,10 @@ RUN apt-get update \
 # Il modello dei landmark della mano è un file pubblico e stabile: sta
 # nell'immagine, così il contenitore parte senza scaricare nulla. Non va in
 # /app/models: compose ci monta sopra la cartella models dell'host, che lo
-# nasconderebbe.
+# nasconderebbe. Le cartelle vanno create prima: ADD --chmod darebbe anche a
+# loro, e quindi ad /app, i permessi del file, e l'utente del contenitore non
+# potrebbe più entrare in /app.
+RUN mkdir -p /app/bundled/hand_tracking
 ADD --chmod=444 \
     https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task \
     /app/bundled/hand_tracking/hand_landmarker.task
