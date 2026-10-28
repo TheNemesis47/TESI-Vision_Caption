@@ -91,6 +91,10 @@ services:
   ollama:
     profiles: ["local-vlm"]
     image: ollama/ollama:latest
+    environment:
+      # Il modello resta in GPU anche nelle pause della lezione: ricaricarlo
+      # costa più del tempo massimo concesso a una descrizione.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
     volumes:
       - ollama-models:/root/.ollama
     ports:
