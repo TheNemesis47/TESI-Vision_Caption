@@ -75,6 +75,9 @@ services:
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      # QUIC viaggia su UDP, che le reti universitarie spesso bloccano: il
+      # tunnel resterebbe in attesa. http2 passa per TCP 443.
+      TUNNEL_TRANSPORT_PROTOCOL: ${CLOUDFLARE_TUNNEL_PROTOCOL:-http2}
     depends_on:
       - client
     restart: unless-stopped
