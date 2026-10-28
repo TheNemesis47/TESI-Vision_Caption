@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import FastAPI
 from loguru import logger
 from vision_caption.infrastructure.settings import AppSettings
@@ -17,6 +18,13 @@ from vision_caption.core.domain.pointing import PointingEvent
 from vision_caption.core.domain.pointing_caption import PointingCaption
 from vision_caption.core.ports.pointing_image_preparer_port import PointingImages
 from vision_caption.core.ports.research_recorder_port import ResearchRecorderPort
+from vision_caption.core.ports.caption_sample_store_port import (
+    CaptionSampleStorePort,
+    NullCaptionSampleStore,
+)
+from vision_caption.adapters.research.file_caption_sample_store import (
+    FileCaptionSampleStore,
+)
 
 # Import dei componenti reali (adapters e services)
 from vision_caption.adapters.hand_tracking.mediapipe_hand_pose_estimator import (
@@ -32,6 +40,7 @@ from vision_caption.adapters.scene.RfdetrSceneDetectorAdapter import RfdetrScene
 from vision_caption.adapters.scene.RfdetrCustomSceneDetectorAdapter import RfdetrCustomSceneDetectorAdapter
 from vision_caption.adapters.scene.HybridSceneDetectorAdapter import HybridSceneDetectorAdapter
 from vision_caption.adapters.vlm.OpenRouterCaptionGenerator import OpenRouterCaptionGenerator
+from vision_caption.adapters.vlm.prompts import auto_prompt
 from vision_caption.adapters.vlm.OpenRouterPointingCaptionGenerator import (
     OpenRouterPointingCaptionGenerator,
 )
@@ -130,7 +139,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         vlm_base_url = settings.vlm.resolved_base_url
         vlm_model = settings.vlm.resolved_model_name
         logger.info(
-            f"VLM: provider={vlm_provider}, modello={vlm_model}, endpoint={vlm_base_url}"
+            f"VLM: provider={vlm_provider}, modello={vlm_model}, "
+            f"endpoint={vlm_base_url}, contesto={settings.vlm.context}"
         )
 
         # Inizializzazione SSIM e RF-DETR
@@ -185,8 +195,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         scene_detector = HybridSceneDetectorAdapter(
             ssim_detector=ssim_detector,
             rfdetr_detector=rfdetr_detector,
+            # A lezione la slide cambia mentre gli oggetti restano gli stessi
+            # (lo schermo, il docente): il filtro sulle classi tacerebbe ogni
+            # nuova slide. Decide SSIM, e la deduplica del testo fa il resto.
             suppress_unchanged_class_counts=(
                 settings.auto.suppress_unchanged_class_counts
+                and settings.vlm.context != "lesson"
             ),
             semantic_box_iou_threshold=(
                 settings.auto.semantic_box_iou_threshold
@@ -202,6 +216,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             max_tokens=settings.auto.vlm.max_output_tokens,
             temperature=settings.auto.vlm.temperature,
             timeout_seconds=settings.auto.vlm.http_timeout_seconds,
+            prompt=auto_prompt(settings.vlm.context),
         )
         pointing_caption_generator = OpenRouterPointingCaptionGenerator(
             api_key=settings.vlm.api_key,
@@ -210,6 +225,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             timeout_seconds=settings.pointing.vlm.timeout_seconds,
             max_tokens=settings.pointing.vlm.max_output_tokens,
             temperature=settings.pointing.vlm.temperature,
+            context=settings.vlm.context,
         )
         media_pipe_settings = MediaPipeHandPoseSettings(
             model_path=settings.pointing.media_pipe.model_path,
@@ -321,9 +337,21 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ),
     )
 
+    def create_sample_store(
+        research_recorder: ResearchRecorderPort | None,
+    ) -> CaptionSampleStorePort:
+        if not settings.samples.enabled:
+            return NullCaptionSampleStore()
+        # Stessa sessione del log di ricerca: dalla riga si risale alle immagini.
+        session_id = getattr(research_recorder, "session_id", None) or (
+            datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
+        return FileCaptionSampleStore(settings.samples.output_dir / session_id)
+
     def create_pipeline(
         research_recorder: ResearchRecorderPort | None = None,
     ) -> CaptionPipeline:
+        sample_store = create_sample_store(research_recorder)
         if use_mocks:
             hand_pose_estimator = MockHandPoseEstimator()
         else:
@@ -345,6 +373,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             caption_generator=pointing_caption_generator,
             speech_synthesizer=speech_synthesizer,
             research_recorder=research_recorder,
+            sample_store=sample_store,
         )
         return CaptionPipeline(
             scene_detector=scene_detector,
@@ -362,6 +391,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 settings.auto.caption_similarity_threshold
             ),
             research_recorder=research_recorder,
+            sample_store=sample_store,
         )
 
     # Lo stato temporale POINTING e il rate limiter nascono per connessione.

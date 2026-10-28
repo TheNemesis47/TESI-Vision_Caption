@@ -4,6 +4,7 @@ import json
 import httpx
 from pydantic import ValidationError
 
+from vision_caption.adapters.vlm.prompts import CaptionContext, pointing_context
 from vision_caption.core.domain.pointing import PointingEvent
 from vision_caption.core.domain.pointing_caption import PointingCaption
 from vision_caption.core.ports.pointing_caption_generator_port import (
@@ -19,7 +20,10 @@ SAFETY_FINISH_REASONS = {
 }
 
 
-def build_pointing_prompt(event: PointingEvent) -> str:
+def build_pointing_prompt(
+    event: PointingEvent,
+    context: CaptionContext = "general",
+) -> str:
     return f"""Sei il modulo visivo di un assistente per l'accessibilità.
 Ricevi tre immagini dello stesso istante:
 1. CONTESTO: scena completa con il corridoio giallo di puntamento.
@@ -38,7 +42,7 @@ Analizza il corridoio dalla punta verso il bordo. Scegli l'oggetto fisico
 delimitato più allineato con la linea centrale. Ignora la mano e il corpo della
 persona che punta. Non inventare dettagli e non inferire attributi personali.
 Se il bersaglio è una persona, usa soltanto il termine neutro "persona".
-
+{pointing_context(context)}
 Usa il CONTESTO per riconoscere la scena, il FOCUS per verificare
 l'allineamento e l'immagine PULITA per trascrivere esclusivamente il testo che
 appartiene al bersaglio. Non tradurre né completare testo incerto. Se non c'è
@@ -87,9 +91,10 @@ def build_pointing_payload(
     model_name: str,
     max_tokens: int,
     temperature: float = 0.1,
+    context: CaptionContext = "general",
 ) -> dict:
     content: list[dict] = [
-        {"type": "text", "text": build_pointing_prompt(event)},
+        {"type": "text", "text": build_pointing_prompt(event, context)},
     ]
     content.extend(
         _image_content("IMMAGINE 1 - CONTESTO COMPLETO", images.context_jpeg)
@@ -162,8 +167,10 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
         max_tokens: int = 1200,
         temperature: float = 0.1,
         client: httpx.AsyncClient | None = None,
+        context: CaptionContext = "general",
     ) -> None:
         self._api_key = api_key
+        self._context = context
         self._model_name = model_name
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._timeout_seconds = timeout_seconds
@@ -182,6 +189,7 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
             model_name=self._model_name,
             max_tokens=self._max_tokens,
             temperature=self._temperature,
+            context=self._context,
         )
         headers = {
             "Content-Type": "application/json",

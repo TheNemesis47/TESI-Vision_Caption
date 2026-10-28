@@ -2,6 +2,7 @@ import base64
 import json
 import httpx
 from vision_caption.core.domain.frame import Frame
+from vision_caption.adapters.vlm.prompts import AUTO_PROMPTS
 from vision_caption.core.ports.CaptionGeneratorPort import CaptionGeneratorPort
 
 class OpenRouterCaptionGenerator(CaptionGeneratorPort):
@@ -13,8 +14,10 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
         max_tokens: int = 80,
         temperature: float = 0.1,
         timeout_seconds: float = 120.0,
+        prompt: str = AUTO_PROMPTS["general"],
     ):
         self._api_key = api_key
+        self._prompt = prompt
         self._model_name = model_name
         self._base_url = base_url
         self._max_tokens = max_tokens
@@ -45,18 +48,7 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
                     "content": [
                         {
                             "type": "text",
-                            "text": (
-                                "Sei una guida per una persona non vedente. Descrivi la scena in UNA sola frase "
-                                "breve (massimo 20 parole), diretta e concreta.\n"
-                                "REGOLE FONDAMENTALI:\n"
-                                "- Descrivi SOLO ciò che vedi con certezza. Se un dettaglio non è chiaro, "
-                                "NON indovinare e NON menzionarlo.\n"
-                                "- Se non sei sicuro del tipo di un oggetto, usa un termine generico "
-                                "(es. 'occhiali' invece di 'occhiali da sole', 'accessorio al collo' invece di 'collare').\n"
-                                "- Se non riconosci con certezza l'ambiente, non nominarlo: descrivi solo gli elementi visibili.\n"
-                                "- Scrivi numeri, orari e date in lettere, nella forma in cui devono essere pronunciati in italiano.\n"
-                                "- Niente elenchi, markdown o intestazioni. Solo testo semplice in ITALIANO."
-                            )
+                            "text": self._prompt,
                         },
                         {
                             "type": "image_url",

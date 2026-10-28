@@ -142,3 +142,16 @@ async def test_local_server_without_key_gets_no_authorization_header() -> None:
         await generator.generate(_event(), _images())
 
     assert "authorization" not in seen[0].headers
+
+
+def test_lesson_context_adds_classroom_instructions() -> None:
+    from vision_caption.adapters.vlm.OpenRouterPointingCaptionGenerator import (
+        build_pointing_prompt,
+    )
+
+    general = build_pointing_prompt(_event(), "general")
+    lesson = build_pointing_prompt(_event(), "lesson")
+
+    assert "lezione" not in general
+    assert "lezione in aula" in lesson
+    assert lesson.rstrip().endswith("}")

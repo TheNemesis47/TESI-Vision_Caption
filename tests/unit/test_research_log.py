@@ -313,3 +313,73 @@ async def test_pointing_survives_a_failing_vlm() -> None:
     assert results == []
     (result,) = recorder.named("pointing_result")
     assert result["outcome"] == "vlm_error"
+
+
+class MemoryStore:
+    def __init__(self) -> None:
+        self.saved: list[tuple[str, dict, dict]] = []
+
+    def save(self, name, images, record) -> None:
+        self.saved.append((name, images, record))
+
+
+@pytest.mark.asyncio
+async def test_auto_keeps_the_frame_with_every_generated_caption() -> None:
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    store = MemoryStore()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=FakeCaptionGenerator("Titolo: le derivate."),
+        speech_synthesizer=FakeSpeechSynthesizer(),
+        rate_limiter=rate_limiter,
+        sample_store=store,
+    )
+
+    [_ async for _ in pipeline.process(_auto_frame(1))]
+    [_ async for _ in pipeline.process(_auto_frame(2))]
+
+    (first_name, first_images, first), (_, _, second) = store.saved
+    assert first_name == "auto_000001"
+    assert first_images == {"frame.jpg": b"fake-jpeg"}
+    assert first["outcome"] == "completed"
+    assert first["captions"] == [{"text": "Titolo: le derivate.", "spoken": True}]
+    assert second["captions"][0]["spoken"] is False
+
+
+@pytest.mark.asyncio
+async def test_pointing_keeps_the_three_images_with_the_answer() -> None:
+    store = MemoryStore()
+    pipeline = _pointing_pipeline(MemoryRecorder(), _caption())
+    pipeline._samples = store
+
+    [_ async for _ in pipeline.process(_frame())]
+
+    ((name, images, record),) = store.saved
+    assert name == "pointing_000005"
+    assert set(images) == {"01_context.jpg", "02_focus.jpg", "03_clean.jpg"}
+    assert record["outcome"] == "spoken"
+    assert record["target"] == "cartello"
+    assert record["text"].startswith("Un cartello rosso")
+
+
+def test_file_store_writes_images_and_caption(tmp_path) -> None:
+    from vision_caption.adapters.research.file_caption_sample_store import (
+        FileCaptionSampleStore,
+    )
+
+    FileCaptionSampleStore(tmp_path / "sessione").save(
+        "auto_000001",
+        {"frame.jpg": b"jpeg"},
+        {"captions": [{"text": "Titolo: integrali.", "spoken": True}]},
+    )
+
+    sample = tmp_path / "sessione" / "auto_000001"
+    assert (sample / "frame.jpg").read_bytes() == b"jpeg"
+    saved = json.loads((sample / "caption.json").read_text())
+    assert saved["captions"][0]["text"] == "Titolo: integrali."

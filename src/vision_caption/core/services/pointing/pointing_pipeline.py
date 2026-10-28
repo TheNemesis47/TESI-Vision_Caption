@@ -24,6 +24,11 @@ from vision_caption.core.ports.pointing_caption_generator_port import (
 )
 from vision_caption.core.ports.pointing_image_preparer_port import (
     PointingImagePreparerPort,
+    PointingImages,
+)
+from vision_caption.core.ports.caption_sample_store_port import (
+    CaptionSampleStorePort,
+    NullCaptionSampleStore,
 )
 from vision_caption.core.ports.research_recorder_port import (
     NullResearchRecorder,
@@ -113,6 +118,7 @@ class PointingPipeline:
         speech_synthesizer: SpeechSynthesizerPort,
         clock: Callable[[], float] = monotonic,
         research_recorder: ResearchRecorderPort | None = None,
+        sample_store: CaptionSampleStorePort | None = None,
     ) -> None:
         self._hand_pose_estimator = hand_pose_estimator
         self._gesture_recognizer = gesture_recognizer
@@ -122,6 +128,7 @@ class PointingPipeline:
         self._speech_synthesizer = speech_synthesizer
         self._clock = clock
         self._research = research_recorder or NullResearchRecorder()
+        self._samples = sample_store or NullCaptionSampleStore()
 
     async def process(
         self,
@@ -186,9 +193,9 @@ class PointingPipeline:
             logger.exception(
                 f"VLM POINTING non disponibile sul frame {frame.frame_id}."
             )
-            self._research.record(
-                "pointing_result",
-                frame_id=frame.frame_id,
+            self._result(
+                frame,
+                images,
                 outcome="vlm_error",
                 error_type=type(error).__name__,
             )
@@ -199,19 +206,14 @@ class PointingPipeline:
             "vlm_ms": round((captioned_at - prepared_at) * 1000.0, 1),
         }
         if caption is None:
-            self._research.record(
-                "pointing_result",
-                frame_id=frame.frame_id,
-                outcome="no_caption",
-                **timings,
-            )
+            self._result(frame, images, outcome="no_caption", **timings)
             return
 
         spoken_caption = compose_accessibility_caption(caption)
         if spoken_caption is None:
-            self._research.record(
-                "pointing_result",
-                frame_id=frame.frame_id,
+            self._result(
+                frame,
+                images,
                 outcome="empty_caption",
                 **timings,
                 **_caption_fields(caption),
@@ -219,18 +221,37 @@ class PointingPipeline:
             return
 
         audio = await self._speech_synthesizer.synthesize(spoken_caption)
-        self._research.record(
-            "pointing_result",
-            frame_id=frame.frame_id,
+        self._result(
+            frame,
+            images,
             outcome="spoken",
             **timings,
             tts_ms=round((perf_counter() - captioned_at) * 1000.0, 1),
             **_caption_fields(caption),
+            text=spoken_caption,
         )
         yield CaptionResult(
             frame_id=frame.frame_id,
             caption=spoken_caption,
             audio=audio,
+        )
+
+    def _result(
+        self,
+        frame: Frame,
+        images: PointingImages,
+        **fields,
+    ) -> None:
+        """Registra l'esito del gesto e ne conserva le immagini."""
+        self._research.record("pointing_result", frame_id=frame.frame_id, **fields)
+        self._samples.save(
+            f"pointing_{frame.frame_id:06d}",
+            {
+                "01_context.jpg": images.context_jpeg,
+                "02_focus.jpg": images.focus_jpeg,
+                "03_clean.jpg": images.clean_jpeg,
+            },
+            {"mode": "POINTING", "frame_id": frame.frame_id, **fields},
         )
 
     def reset(self) -> None:

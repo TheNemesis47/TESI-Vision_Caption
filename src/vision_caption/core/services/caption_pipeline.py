@@ -7,6 +7,10 @@ from loguru import logger
 from vision_caption.core.ports.SceneDetectorPort import SceneDetectorPort
 from vision_caption.core.ports.CaptionGeneratorPort import CaptionGeneratorPort
 from vision_caption.core.ports.SpeechSynthesizerPort import SpeechSynthesizerPort
+from vision_caption.core.ports.caption_sample_store_port import (
+    CaptionSampleStorePort,
+    NullCaptionSampleStore,
+)
 from vision_caption.core.ports.research_recorder_port import (
     NullResearchRecorder,
     ResearchRecorderPort,
@@ -31,6 +35,7 @@ class CaptionPipeline:
         vlm_chunk_timeout_seconds: float = 3.0,
         caption_similarity_threshold: float = 0.85,
         research_recorder: ResearchRecorderPort | None = None,
+        sample_store: CaptionSampleStorePort | None = None,
     ):
         self._scene_detector = scene_detector
         self._caption_generator = caption_generator
@@ -41,6 +46,7 @@ class CaptionPipeline:
         self._vlm_chunk_timeout_seconds = vlm_chunk_timeout_seconds
         self._caption_similarity_threshold = caption_similarity_threshold
         self._research = research_recorder or NullResearchRecorder()
+        self._samples = sample_store or NullCaptionSampleStore()
         self._last_caption = ""
         self._last_mode: CaptionMode | None = None
 
@@ -147,6 +153,9 @@ class CaptionPipeline:
         agen = self._caption_generator.generate(frame)
         t_vlm_start = time.perf_counter()
         outcome = "completed"
+        # Ogni testo prodotto dal modello, anche quello poi taciuto, per
+        # poterlo confrontare con l'immagine dopo i test.
+        generated: list[dict] = []
         try:
             while True:
                 try:
@@ -219,6 +228,10 @@ class CaptionPipeline:
                         f"({caption_similarity:.3f}); saltata."
                     )
                     metrics.chunks_deduplicated += 1
+                    generated.append(
+                        {"text": chunk_text, "spoken": False,
+                         "reason": "similar_to_previous"}
+                    )
                     self._research.record(
                         "utterance_skipped",
                         mode=CaptionMode.AUTO.value,
@@ -259,6 +272,7 @@ class CaptionPipeline:
                     self._rate_limiter.record()
 
                 self._last_caption = chunk_text
+                generated.append({"text": chunk_text, "spoken": True})
                 metrics.chunks_emitted += 1
 
                 # Invece di un return finale, facciamo lo yield per spedire il frammento audio!
@@ -270,7 +284,16 @@ class CaptionPipeline:
             )
             if outcome == "completed" and metrics.chunks_emitted == 0:
                 outcome = "no_audio"
-            self._emit_metrics(metrics, outcome)
+            payload = self._emit_metrics(metrics, outcome)
+            self._samples.save(
+                f"auto_{frame.frame_id:06d}",
+                {"frame.jpg": frame.image_bytes},
+                {
+                    "mode": CaptionMode.AUTO.value,
+                    **payload,
+                    "captions": generated,
+                },
+            )
 
         logger.info("Total AUTO streaming frame processing completed.")
 
@@ -278,8 +301,10 @@ class CaptionPipeline:
         self,
         metrics: FrameMetrics,
         outcome: str,
-    ) -> None:
-        self._research.record("auto_frame", **metrics.emit(outcome))
+    ) -> dict:
+        payload = metrics.emit(outcome)
+        self._research.record("auto_frame", **payload)
+        return payload
 
     async def close(self) -> None:
         if self._pointing_pipeline is not None:

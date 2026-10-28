@@ -309,7 +309,12 @@ della sessione) ed `event`.
 | `marker` | nota del ricercatore: `curl -X POST .../api/research/marker -H 'Content-Type: application/json' -d '{"label":"inizio compito 2"}'` |
 | `error`, `session_end` | errori e riepilogo della connessione |
 
-Non contiene immagini. `RESEARCH_LOG_TEXT=false` toglie anche le parole e
+Con `SAVE_CAPTION_SAMPLES=true` ogni chiamata al modello visivo lascia in
+`artifacts/samples/<sessione>/` l'immagine ricevuta (in POINTING le tre) e un
+`caption.json` con le descrizioni generate, anche quelle taciute: la sessione
+è la stessa del log, così ogni descrizione si rivede accanto alla sua immagine.
+
+Il log non contiene immagini. `RESEARCH_LOG_TEXT=false` toglie anche le parole e
 lascia tempi, esiti e lunghezze. `scripts/summarize_research_log.py` ne ricava
 una riga per sessione, anche in CSV.
 

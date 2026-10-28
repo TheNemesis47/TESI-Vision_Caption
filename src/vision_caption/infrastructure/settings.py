@@ -78,6 +78,9 @@ class VlmSettings(SettingsModel):
 
     provider: Literal["auto", "openrouter", "local"] = "auto"
     api_key: str = Field(default="", repr=False)
+    # "lesson" adatta i prompt allo studio: slide, lavagna e materiale
+    # didattico durante una lezione. "general" è l'uso libero della tesi.
+    context: Literal["general", "lesson"] = "lesson"
     base_url: str = ""
     model_name: str = ""
 
@@ -177,10 +180,13 @@ class RfDetrSettings(SettingsModel):
 
 
 class AutoVlmSettings(SettingsModel):
-    max_output_tokens: int = Field(default=80, ge=1)
+    # Una slide chiede più parole di una scena: titolo e fino a tre punti.
+    max_output_tokens: int = Field(default=250, ge=1)
     temperature: float = Field(default=0.1, ge=0.0, le=2.0)
     http_timeout_seconds: float = Field(default=120.0, gt=0.0)
-    chunk_timeout_seconds: float = Field(default=3.0, gt=0.0)
+    # La descrizione arriva intera alla fine della generazione: il tempo
+    # massimo deve coprire tutta la risposta, non un singolo token.
+    chunk_timeout_seconds: float = Field(default=12.0, gt=0.0)
 
 
 class AutoCaptionSettings(SettingsModel):
@@ -188,7 +194,9 @@ class AutoCaptionSettings(SettingsModel):
     rfdetr: RfDetrSettings = Field(default_factory=RfDetrSettings)
     vlm: AutoVlmSettings = Field(default_factory=AutoVlmSettings)
     min_caption_interval_seconds: float = Field(default=5.0, ge=0.0)
-    max_frame_age_seconds: float = Field(default=3.0, gt=0.0)
+    # Una slide resta valida per secondi: la descrizione di un frame di dieci
+    # secondi fa è ancora utile, quella di una strada no.
+    max_frame_age_seconds: float = Field(default=10.0, gt=0.0)
     caption_similarity_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     suppress_unchanged_class_counts: bool = True
     semantic_box_iou_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
@@ -295,6 +303,13 @@ class PointingSettings(SettingsModel):
     debug: PointingDebugSettings = Field(default_factory=PointingDebugSettings)
 
 
+class SampleSettings(SettingsModel):
+    """Immagini e descrizioni salvate per valutarle una per una dopo i test."""
+
+    enabled: bool = False
+    output_dir: Path = Path("artifacts/samples")
+
+
 class ResearchSettings(SettingsModel):
     """Log degli eventi per lo studio, separato dal log tecnico."""
 
@@ -313,6 +328,7 @@ class AppSettings(SettingsModel):
     auto: AutoCaptionSettings = Field(default_factory=AutoCaptionSettings)
     pointing: PointingSettings = Field(default_factory=PointingSettings)
     research: ResearchSettings = Field(default_factory=ResearchSettings)
+    samples: SampleSettings = Field(default_factory=SampleSettings)
 
     @classmethod
     def from_env(
@@ -363,6 +379,7 @@ class AppSettings(SettingsModel):
                 # configurazioni scritte prima che il provider fosse scegliibile.
                 base_url=value("VLM_BASE_URL", value("OPENROUTER_BASE_URL", "")),
                 model_name=value("VLM_MODEL", ""),
+                context=value("CAPTION_CONTEXT", "lesson"),
             ),
             tts=TtsSettings(
                 provider=value("TTS_PROVIDER", "auto"),
@@ -425,19 +442,19 @@ class AppSettings(SettingsModel):
                     warmup_height=value("RFDETR_WARMUP_HEIGHT", 480),
                 ),
                 vlm=AutoVlmSettings(
-                    max_output_tokens=value("AUTO_VLM_MAX_OUTPUT_TOKENS", 80),
+                    max_output_tokens=value("AUTO_VLM_MAX_OUTPUT_TOKENS", 250),
                     temperature=value("AUTO_VLM_TEMPERATURE", 0.1),
                     http_timeout_seconds=value(
                         "AUTO_VLM_HTTP_TIMEOUT_SECONDS",
                         120.0,
                     ),
-                    chunk_timeout_seconds=value("VLM_TIMEOUT_S", 3.0),
+                    chunk_timeout_seconds=value("VLM_TIMEOUT_S", 12.0),
                 ),
                 min_caption_interval_seconds=value(
                     "MIN_CAPTION_INTERVAL_SECONDS",
                     5.0,
                 ),
-                max_frame_age_seconds=value("MAX_FRAME_AGE_S", 3.0),
+                max_frame_age_seconds=value("MAX_FRAME_AGE_S", 10.0),
                 caption_similarity_threshold=value(
                     "CAPTION_SIMILARITY_THRESHOLD",
                     0.85,
@@ -592,6 +609,10 @@ class AppSettings(SettingsModel):
                         "artifacts/pointing_debug",
                     ),
                 ),
+            ),
+            samples=SampleSettings(
+                enabled=value("SAVE_CAPTION_SAMPLES", False),
+                output_dir=value("CAPTION_SAMPLES_DIR", "artifacts/samples"),
             ),
             research=ResearchSettings(
                 enabled=value("RESEARCH_LOG_ENABLED", True),

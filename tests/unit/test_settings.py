@@ -146,3 +146,11 @@ def test_fish_si_sceglie_dichiarandolo() -> None:
     assert settings.tts.resolved_provider == "fish"
     assert settings.tts.fish_url == "http://fish:8080"
     assert settings.tts.fish_seed is None
+
+
+def test_il_contesto_predefinito_e_la_lezione() -> None:
+    settings = AppSettings.from_env({})
+
+    assert settings.vlm.context == "lesson"
+    assert settings.samples.enabled is False
+    assert AppSettings.from_env({"CAPTION_CONTEXT": "general"}).vlm.context == "general"
