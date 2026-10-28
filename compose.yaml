@@ -136,7 +136,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        pip install --quiet --root-user-action=ignore "huggingface_hub[cli]" &&
+        pip install --quiet --root-user-action=ignore huggingface_hub &&
         hf download fishaudio/openaudio-s1-mini
         --local-dir /checkpoints/openaudio-s1-mini
     environment:
