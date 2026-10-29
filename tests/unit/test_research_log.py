@@ -383,3 +383,26 @@ def test_file_store_writes_images_and_caption(tmp_path) -> None:
     assert (sample / "frame.jpg").read_bytes() == b"jpeg"
     saved = json.loads((sample / "caption.json").read_text())
     assert saved["captions"][0]["text"] == "Titolo: integrali."
+
+
+def test_vlm_warm_up_sends_one_small_request(monkeypatch) -> None:
+    import httpx
+
+    from vision_caption.adapters.vlm import OpenRouterCaptionGenerator as module
+
+    sent: list[dict] = []
+
+    def fake_post(url, headers, json, timeout):
+        sent.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return httpx.Response(200, json={}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(module.httpx, "post", fake_post)
+    module.OpenRouterCaptionGenerator(
+        api_key="", model_name="qwen3-vl:8b-instruct", base_url="http://ollama:11434/v1"
+    ).warm_up(timeout_seconds=300)
+
+    (request,) = sent
+    assert request["url"] == "http://ollama:11434/v1/chat/completions"
+    assert "Authorization" not in request["headers"]
+    assert request["json"]["max_tokens"] == 1
+    assert request["timeout"] == 300

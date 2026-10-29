@@ -218,6 +218,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             timeout_seconds=settings.auto.vlm.http_timeout_seconds,
             prompt=auto_prompt(settings.vlm.context),
         )
+        if vlm_provider == "local" and settings.vlm.warmup_timeout_seconds > 0:
+            logger.info(
+                f"Carico il modello visivo {vlm_model}: al primo avvio può "
+                "richiedere qualche minuto..."
+            )
+            caption_generator.warm_up(settings.vlm.warmup_timeout_seconds)
         pointing_caption_generator = OpenRouterPointingCaptionGenerator(
             api_key=settings.vlm.api_key,
             model_name=vlm_model,

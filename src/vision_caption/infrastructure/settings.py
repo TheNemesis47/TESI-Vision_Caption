@@ -81,6 +81,9 @@ class VlmSettings(SettingsModel):
     # "lesson" adatta i prompt allo studio: slide, lavagna e materiale
     # didattico durante una lezione. "general" è l'uso libero della tesi.
     context: Literal["general", "lesson"] = "lesson"
+    # Con un modello locale il server lo fa caricare all'avvio e aspetta fino
+    # a questo tempo prima di accettare utenti. 0 lo disattiva.
+    warmup_timeout_seconds: float = Field(default=300.0, ge=0.0)
     base_url: str = ""
     model_name: str = ""
 
@@ -380,6 +383,7 @@ class AppSettings(SettingsModel):
                 base_url=value("VLM_BASE_URL", value("OPENROUTER_BASE_URL", "")),
                 model_name=value("VLM_MODEL", ""),
                 context=value("CAPTION_CONTEXT", "lesson"),
+                warmup_timeout_seconds=value("VLM_WARMUP_TIMEOUT_SECONDS", 300.0),
             ),
             tts=TtsSettings(
                 provider=value("TTS_PROVIDER", "auto"),
