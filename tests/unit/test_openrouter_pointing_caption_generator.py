@@ -171,3 +171,20 @@ def test_local_models_get_no_constrained_json_mode() -> None:
 
     assert cloud["response_format"] == {"type": "json_object"}
     assert "response_format" not in local
+
+
+def test_parser_tolerates_prose_and_missing_fields_from_local_models() -> None:
+    parsed = parse_pointing_caption(
+        'Ecco la risposta:\n{"target": "formula", "description": "x al quadrato", '
+        '"visible_text": "x^2", "confidence": 1.4, "candidates": [{"label": ""}]}\nFine.'
+    )
+
+    assert parsed is not None
+    assert parsed.target == "formula"
+    assert parsed.confidence == 1.0
+    assert parsed.needs_repointing is False
+    assert parsed.candidates == ()
+
+
+def test_parser_still_rejects_text_without_json() -> None:
+    assert parse_pointing_caption("Non vedo nulla di preciso.") is None

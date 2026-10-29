@@ -150,6 +150,11 @@ services:
       target: server
       args:
         BACKEND: cuda
+    environment:
+      # Senza torch.compile S1-mini genera circa sei token al secondo: una
+      # frase di otto secondi richiedeva mezzo minuto. La compilazione costa
+      # qualche minuto al primo avvio e rende la voce più veloce del parlato.
+      COMPILE: ${FISH_COMPILE:-1}
     volumes:
       - fish-checkpoints:/app/checkpoints
     ports:

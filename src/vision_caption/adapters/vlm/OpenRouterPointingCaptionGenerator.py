@@ -2,6 +2,7 @@ import base64
 import json
 
 import httpx
+from loguru import logger
 from pydantic import ValidationError
 
 from vision_caption.adapters.vlm.prompts import CaptionContext, pointing_context
@@ -146,20 +147,76 @@ def _extract_assistant_content(payload: dict) -> str | None:
     return None
 
 
+# Campi che un modello locale tende a omettere o a riempire male: mancanti o
+# nulli prendono un valore prudente invece di far scartare tutta la risposta.
+_CAPTION_DEFAULTS = {
+    "target": None,
+    "description": "",
+    "visible_text": None,
+    "text_confidence": 0.0,
+    "text_complete": False,
+    "confidence": 0.0,
+    "candidates": [],
+    "alternatives": [],
+    "needs_repointing": False,
+    "needs_closer_view": False,
+}
+
+
+def _clamp_unit(value) -> float:
+    try:
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _normalize_caption_payload(payload: dict) -> dict:
+    normalized = {
+        key: payload.get(key) if payload.get(key) is not None else default
+        for key, default in _CAPTION_DEFAULTS.items()
+    }
+    for key in ("text_confidence", "confidence"):
+        normalized[key] = _clamp_unit(normalized[key])
+    for key in ("text_complete", "needs_repointing", "needs_closer_view"):
+        normalized[key] = bool(normalized[key])
+    if not isinstance(normalized["description"], str):
+        normalized["description"] = str(normalized["description"])
+    normalized["alternatives"] = [
+        str(item) for item in normalized["alternatives"] or [] if item
+    ] if isinstance(normalized["alternatives"], list) else []
+    candidates = []
+    for item in normalized["candidates"] if isinstance(normalized["candidates"], list) else []:
+        if not isinstance(item, dict) or not item.get("label"):
+            continue
+        candidates.append(
+            {
+                "label": str(item["label"]),
+                "position_along_ray": _clamp_unit(item.get("position_along_ray")),
+                "intersects_centerline": bool(item.get("intersects_centerline")),
+                "confidence": _clamp_unit(item.get("confidence")),
+            }
+        )
+    normalized["candidates"] = candidates
+    return normalized
+
+
 def parse_pointing_caption(content: str) -> PointingCaption | None:
-    stripped = content.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        stripped = "\n".join(lines).strip()
+    # Il JSON può arrivare fra backtick o con una frase prima e dopo: conta
+    # l'oggetto fra la prima graffa aperta e l'ultima chiusa.
+    start = content.find("{")
+    end = content.rfind("}")
+    if start == -1 or end <= start:
+        return None
 
     try:
-        payload = json.loads(stripped)
-        return PointingCaption.model_validate(payload)
-    except (json.JSONDecodeError, ValidationError):
+        payload = json.loads(content[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return PointingCaption.model_validate(_normalize_caption_payload(payload))
+    except ValidationError:
         return None
 
 
@@ -232,5 +289,11 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
             return None
         content = _extract_assistant_content(response_payload)
         if content is None:
+            logger.warning("Risposta POINTING senza testo dal modello visivo.")
             return None
-        return parse_pointing_caption(content)
+        caption = parse_pointing_caption(content)
+        if caption is None:
+            logger.warning(
+                f"Risposta POINTING non interpretabile: {content[:600]!r}"
+            )
+        return caption

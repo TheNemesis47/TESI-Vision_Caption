@@ -70,7 +70,8 @@ $ok = Attendi "Server" 600 {
     try { (Invoke-WebRequest http://localhost:8765/health -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 }
     catch { $false }
 }
-$ok = $ok -and (Attendi "Fish" 300 {
+# Con la compilazione attiva Fish impiega qualche minuto al primo avvio.
+$ok = $ok -and (Attendi "Fish" 600 {
     try { (Invoke-WebRequest http://localhost:8081/v1/health -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 }
     catch { $false }
 })
