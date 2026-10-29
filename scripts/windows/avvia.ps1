@@ -63,21 +63,10 @@ if ($Aggiorna) {
     docker image prune -f
 }
 
-# 4. Modello visivo caricato in GPU, cosi' la prima descrizione non scade
-$Modello = (Select-String -Path .env -Pattern '^VLM_MODEL=(.+)$' |
-    Select-Object -Last 1).Matches.Groups[1].Value
-if ($Modello) {
-    Scrivi "Carico $Modello in GPU"
-    Attendi "Ollama" 120 {
-        docker compose @Profili exec -T ollama ollama list *> $null
-        $LASTEXITCODE -eq 0
-    } | Out-Null
-    docker compose @Profili exec -T ollama ollama run $Modello "ok" | Out-Null
-}
-
-# 5. Server pronto
-Scrivi "Attendo il server (RF-DETR impiega circa un minuto)"
-$ok = Attendi "Server" 300 {
+# 4. Server pronto: il server risponde solo dopo aver caricato in GPU anche
+# il modello visivo, che da un disco lento richiede qualche minuto.
+Scrivi "Attendo il server: carica RF-DETR e il modello visivo, anche qualche minuto"
+$ok = Attendi "Server" 600 {
     try { (Invoke-WebRequest http://localhost:8765/health -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 }
     catch { $false }
 }
