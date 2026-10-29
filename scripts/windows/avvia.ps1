@@ -15,8 +15,21 @@ param([switch]$Aggiorna)
 $ErrorActionPreference = "Continue"
 Set-Location (Resolve-Path "$PSScriptRoot\..\..")
 
-$Profili = @("--profile", "local-vlm", "--profile", "local-tts-fish", "--profile", "tunnel")
-$Servizi = @("server", "ollama", "fish", "client", "tunnel")
+function ValoreEnv($Nome) {
+    $Riga = Select-String -Path .env -Pattern "^$Nome=(.*)$" | Select-Object -Last 1
+    if ($Riga) { return $Riga.Matches.Groups[1].Value.Trim() }
+    return ""
+}
+
+# Fish si accende solo se e' la voce scelta: altrimenti occupa memoria della
+# GPU per niente.
+$UsaFish = (ValoreEnv "TTS_PROVIDER") -eq "fish"
+$Profili = @("--profile", "local-vlm", "--profile", "tunnel")
+$Servizi = @("server", "ollama", "client", "tunnel")
+if ($UsaFish) {
+    $Profili += @("--profile", "local-tts-fish")
+    $Servizi += "fish"
+}
 
 function Scrivi($Testo) { Write-Host "==> $Testo" -ForegroundColor Cyan }
 
@@ -71,10 +84,10 @@ $ok = Attendi "Server" 600 {
     catch { $false }
 }
 # Con la compilazione attiva Fish impiega qualche minuto al primo avvio.
-$ok = $ok -and (Attendi "Fish" 600 {
+if ($UsaFish) { $ok = $ok -and (Attendi "Fish" 600 {
     try { (Invoke-WebRequest http://localhost:8081/v1/health -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 }
     catch { $false }
-})
+}) }
 
 docker compose @Profili ps
 if ($ok) {
