@@ -1,15 +1,22 @@
-"""Manda al modello visivo una slide di prova, come farebbe il server.
+r"""Manda al modello visivo una slide di prova, come farebbe il server.
 
 Si esegue dentro il contenitore del server, che ha già codice e indirizzi:
 
     Get-Content scripts\prova_vlm.py | docker compose exec -T server python -
+
+Con un percorso usa quell'immagine invece della slide, per esempio un frame
+salvato fra i campioni (artifacts è montata in /app/artifacts):
+
+    Get-Content scripts\prova_vlm.py | docker compose exec -T server python - /app/artifacts/samples/<sessione>/auto_000001/frame.jpg
 
 Stampa il testo generato e quanto ci è voluto, due volte: la prima misura
 anche la lettura dell'immagine, la seconda la ritrova già in cache.
 """
 
 import asyncio
+import sys
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -43,7 +50,10 @@ async def main() -> None:
         prompt=auto_prompt(settings.vlm.context),
     )
     print(f"modello={settings.vlm.resolved_model_name} endpoint={settings.vlm.resolved_base_url}")
-    frame = Frame(frame_id=1, image_bytes=slide(), caption_mode=CaptionMode.AUTO)
+    image = Path(sys.argv[1]).read_bytes() if len(sys.argv) > 1 else slide()
+    decoded = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_COLOR)
+    print(f"immagine: {decoded.shape[1]}x{decoded.shape[0]}, {len(image)} byte")
+    frame = Frame(frame_id=1, image_bytes=image, caption_mode=CaptionMode.AUTO)
     for attempt in (1, 2):
         started = time.perf_counter()
         texts = [text async for text in generator.generate(frame)]
