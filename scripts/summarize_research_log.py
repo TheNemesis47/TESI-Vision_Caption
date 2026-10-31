@@ -108,6 +108,9 @@ def summarize(events: list[dict]) -> dict:
         "nothing_to_say": skipped_reasons.get("nothing_to_say", 0),
         "similar_skipped": skipped_reasons.get("similar_to_previous", 0),
         "blurry_frames": auto_outcomes.get("suppressed_blur", 0),
+        # Quante volte lo studente ha zittito il sistema: un indice diretto di
+        # quanto la voce disturbava.
+        "stop_gestures": len(by_name.get("stop_gesture", [])),
         "median_words": median_or_none(
             [len((item.get("text") or "").split()) for item in utterances if item.get("text")]
         ),

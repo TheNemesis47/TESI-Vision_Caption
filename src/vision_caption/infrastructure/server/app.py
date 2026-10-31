@@ -51,6 +51,10 @@ from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.services.caption_pipeline import CaptionPipeline
 from vision_caption.core.services.lesson_memory import LessonMemory
 from vision_caption.core.services.speech_text import lesson_speech
+from vision_caption.core.services.pointing.stop_gesture import (
+    StopGestureDetector,
+    StopGestureSettings,
+)
 from vision_caption.core.services.pointing.gesture_recognizer import (
     GestureRecognizerSettings,
     PointingGestureRecognizer,
@@ -427,6 +431,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             sample_store=sample_store,
             lesson_memory=lesson_memory,
             speech_text=speech_text,
+            # Lo stesso stimatore delle mani del puntamento: MediaPipe vuole
+            # tempi crescenti, e i frame di una connessione arrivano in fila.
+            hand_pose_estimator=hand_pose_estimator,
+            stop_gesture=(
+                StopGestureDetector(
+                    StopGestureSettings(
+                        hold_seconds=settings.auto.lesson_stop_hold_seconds,
+                    )
+                )
+                if lesson and settings.auto.lesson_stop_gesture
+                else None
+            ),
         )
 
     # Lo stato temporale POINTING e il rate limiter nascono per connessione.

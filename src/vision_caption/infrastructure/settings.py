@@ -214,6 +214,9 @@ class AutoCaptionSettings(SettingsModel):
     # Tetto di parole per frase a lezione, dopo aver scritto i simboli a
     # parole: oltre si taglia alla fine dell'ultima frase completa.
     lesson_max_words: int = Field(default=50, ge=5)
+    # A lezione la mano aperta davanti alla fotocamera ferma la voce.
+    lesson_stop_gesture: bool = True
+    lesson_stop_hold_seconds: float = Field(default=0.4, ge=0.0)
 
 
 class MediaPipeSettings(SettingsModel):
@@ -489,6 +492,8 @@ class AppSettings(SettingsModel):
                 ),
                 lesson_min_sharpness=value("LESSON_MIN_SHARPNESS", 25.0),
                 lesson_max_words=value("LESSON_MAX_WORDS", 50),
+                lesson_stop_gesture=value("LESSON_STOP_GESTURE", True),
+                lesson_stop_hold_seconds=value("LESSON_STOP_HOLD_SECONDS", 0.4),
             ),
             pointing=PointingSettings(
                 media_pipe=MediaPipeSettings(

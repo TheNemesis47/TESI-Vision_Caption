@@ -301,6 +301,7 @@ Rispetto a `general` cambia soltanto in questa modalità:
 | Foto mosse | un frame sfocato non arriva al modello e non sposta il riferimento SSIM | `LESSON_MIN_SHARPNESS` |
 | Voce | simboli letti a parole (x², ±, √, ≥); descrizioni tagliate a fine frase | `LESSON_MAX_WORDS` |
 | Puntamento | contesto delle slide nel prompt; un'etichetta si legge una volta, una formula solo a parole, le etichette di un grafico in fila no | — |
+| Gesto di stop | la mano aperta davanti alla fotocamera, tenuta un attimo, ferma subito la voce sul telefono; il frame con la mano non viene descritto | `LESSON_STOP_GESTURE`, `LESSON_STOP_HOLD_SECONDS` |
 | Classi RF-DETR | il filtro sulle classi è spento: fra due slide lo schermo resta uguale | — |
 
 `scripts/slide_prova.html` contiene sette slide di prova (titolo, formule,
@@ -322,6 +323,7 @@ della sessione) ed `event`.
 | `utterance` | ciò che è stato detto: testo, durata audio, ritardo dal frame all'invio |
 | `utterance_skipped` | descrizione AUTO taciuta: uguale alla precedente, slide già descritta, nulla di utile |
 | `slide_described` | modalità lezione: slide descritta, con pagina e dimensione della memoria |
+| `stop_gesture` | modalità lezione: lo studente ha fermato la voce con la mano aperta |
 | `pointing_activation` | gesto confermato, nuovo o spostamento su un altro bersaglio |
 | `pointing_blocked` | gesto scartato dall'attesa fra un evento e l'altro |
 | `pointing_result` | bersaglio, testo letto, confidenze, richiesta di ripuntare, tempi |

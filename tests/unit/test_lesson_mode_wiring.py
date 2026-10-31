@@ -37,3 +37,8 @@ def test_each_connection_gets_its_own_memory() -> None:
     factory = create_app(settings).state.pipeline_factory
 
     assert factory(None)._lesson_memory is not factory(None)._lesson_memory
+
+
+def test_stop_gesture_is_active_only_in_lesson_mode() -> None:
+    assert _pipeline("lesson")._stop_gesture is not None
+    assert _pipeline("general")._stop_gesture is None

@@ -68,6 +68,7 @@ class OverlayPipeline(FakePipeline):
         *,
         on_detections,
         on_pointing_overlay,
+        on_stop_audio=None,
     ):
         await on_pointing_overlay(
             (
@@ -102,6 +103,7 @@ class DetectionPipeline(FakePipeline):
         *,
         on_detections,
         on_pointing_overlay,
+        on_stop_audio=None,
     ):
         await on_detections(
             [
