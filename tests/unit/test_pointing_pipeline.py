@@ -89,7 +89,7 @@ class FakeGenerator:
         self.caption = caption
         self.calls = 0
 
-    async def generate(self, event, images) -> PointingCaption | None:
+    async def generate(self, event, images, context=None) -> PointingCaption | None:
         self.calls += 1
         return self.caption
 
@@ -336,3 +336,92 @@ async def test_activation_blocked_by_cooldown_is_returned_to_recognizer() -> Non
     assert results == []
     assert generator.calls == 0
     assert recognizer.cancelled == [_activation()]
+
+
+def _lesson_caption(**fields) -> PointingCaption:
+    return _caption().model_copy(update=fields)
+
+
+def test_lesson_pointing_reads_a_label_once() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import (
+        compose_lesson_caption,
+    )
+
+    caption = _lesson_caption(
+        target="Evaporazione",
+        description="Etichetta di un nodo con scritto Evaporazione",
+        visible_text="Evaporazione",
+    )
+
+    assert compose_lesson_caption(caption) == (
+        "Etichetta di un nodo con scritto Evaporazione"
+    )
+    assert compose_lesson_caption(
+        _lesson_caption(target="Raccolta", description="etichetta", visible_text="Raccolta")
+    ) == "Raccolta"
+
+
+def test_lesson_pointing_skips_raw_chart_labels() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import (
+        compose_lesson_caption,
+    )
+
+    caption = _lesson_caption(
+        target="grafico",
+        description="Grafico a linee della popolazione italiana dal 1950 al 2025.",
+        visible_text="Popolazione italiana (milioni)\n60\n57\n47\n1950 1970 1990 2010 2025",
+    )
+
+    assert compose_lesson_caption(caption) == (
+        "Grafico a linee della popolazione italiana dal 1950 al 2025."
+    )
+
+
+def test_lesson_pointing_reads_a_formula_only_in_words() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import (
+        compose_lesson_caption,
+    )
+
+    caption = _lesson_caption(
+        target="formula",
+        description="a x al quadrato più b x più c uguale zero",
+        visible_text="ax² + bx + c = 0",
+    )
+
+    assert compose_lesson_caption(caption) == (
+        "a x al quadrato più b x più c uguale zero"
+    )
+
+
+@pytest.mark.asyncio
+async def test_lesson_pointing_sends_the_slide_memory_to_the_model() -> None:
+    from vision_caption.core.services.lesson_memory import LessonMemory
+
+    class ContextGenerator(FakeGenerator):
+        def __init__(self, caption) -> None:
+            super().__init__(caption)
+            self.contexts: list[str | None] = []
+
+        async def generate(self, event, images, context=None):
+            self.contexts.append(context)
+            return await super().generate(event, images)
+
+    memory = LessonMemory()
+    memory.remember(2, 7, "Titolo: Equazioni di secondo grado.")
+    generator = ContextGenerator(_caption())
+    pipeline = PointingPipeline(
+        hand_pose_estimator=FakeEstimator(),
+        gesture_recognizer=StubRecognizer((_activation(),)),
+        event_gate=PointingEventGate(cooldown_seconds=0.0),
+        image_preparer=FakePreparer(),
+        caption_generator=generator,
+        speech_synthesizer=FakeSpeech(),
+        clock=lambda: 10.0,
+        lesson_memory=memory,
+        speech_text=lambda text: text.upper(),
+    )
+
+    results = [result async for result in pipeline.process(_frame())]
+
+    assert "Slide 2 di 7: Titolo: Equazioni" in generator.contexts[0]
+    assert results[0].caption == results[0].caption.upper()

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import time
 import asyncio
 from datetime import datetime
@@ -15,6 +16,7 @@ from vision_caption.core.ports.research_recorder_port import (
     NullResearchRecorder,
     ResearchRecorderPort,
 )
+from vision_caption.core.services.lesson_memory import LessonMemory, split_page_tag
 from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.domain.frame import Frame, CaptionMode
@@ -45,6 +47,8 @@ class CaptionPipeline:
         caption_similarity_threshold: float = 0.85,
         research_recorder: ResearchRecorderPort | None = None,
         sample_store: CaptionSampleStorePort | None = None,
+        lesson_memory: LessonMemory | None = None,
+        speech_text: Callable[[str], str] | None = None,
     ):
         self._scene_detector = scene_detector
         self._caption_generator = caption_generator
@@ -56,6 +60,8 @@ class CaptionPipeline:
         self._caption_similarity_threshold = caption_similarity_threshold
         self._research = research_recorder or NullResearchRecorder()
         self._samples = sample_store or NullCaptionSampleStore()
+        self._lesson_memory = lesson_memory
+        self._speech_text = speech_text
         self._last_caption = ""
         self._last_mode: CaptionMode | None = None
 
@@ -107,6 +113,7 @@ class CaptionPipeline:
                 frame.frame_id,
             )
         metrics.ssim_score = scene_result.ssim_score
+        metrics.sharpness = scene_result.sharpness
         metrics.detections = len(scene_result.detections)
         metrics.detected_classes = [
             detection.class_name for detection in scene_result.detections
@@ -159,7 +166,10 @@ class CaptionPipeline:
         # Iteriamo manualmente sul generatore per poter imporre un TIMEOUT VLM
         # su ogni chunk: se un chunk non arriva entro il timeout configurato,
         # abortiamo.
-        agen = self._caption_generator.generate(frame)
+        memory_context = (
+            self._lesson_memory.context() if self._lesson_memory else None
+        )
+        agen = self._caption_generator.generate(frame, memory_context)
         t_vlm_start = time.perf_counter()
         outcome = "completed"
         # Ogni testo prodotto dal modello, anche quello poi taciuto, per
@@ -205,6 +215,11 @@ class CaptionPipeline:
                 if not chunk_text:
                     continue
 
+                # La riga "PAGINA: 3/7" serve alla memoria, non va letta.
+                slide_page, slide_total, chunk_text = split_page_tag(chunk_text)
+                if not chunk_text:
+                    continue
+
                 if _is_nothing_to_say(chunk_text):
                     generated.append(
                         {"text": chunk_text, "spoken": False,
@@ -228,6 +243,27 @@ class CaptionPipeline:
                     )
                     outcome = "stale_pre_tts"
                     break
+
+                if self._speech_text is not None:
+                    chunk_text = self._speech_text(chunk_text)
+
+                if self._lesson_memory is not None and self._lesson_memory.is_repeat(
+                    slide_page, slide_total, chunk_text
+                ):
+                    generated.append(
+                        {"text": chunk_text, "spoken": False,
+                         "reason": "same_slide", "page": slide_page,
+                         "total": slide_total}
+                    )
+                    self._research.record(
+                        "utterance_skipped",
+                        mode=CaptionMode.AUTO.value,
+                        frame_id=frame.frame_id,
+                        reason="same_slide",
+                        page=slide_page,
+                        text=chunk_text,
+                    )
+                    continue
 
                 # Confronto tra caption complete, ignorando maiuscole, spazi e punteggiatura finale
                 previous_caption = " ".join(
@@ -295,7 +331,23 @@ class CaptionPipeline:
                     self._rate_limiter.record()
 
                 self._last_caption = chunk_text
-                generated.append({"text": chunk_text, "spoken": True})
+                generated.append(
+                    {"text": chunk_text, "spoken": True,
+                     "page": slide_page, "total": slide_total}
+                )
+                if self._lesson_memory is not None:
+                    self._lesson_memory.remember(
+                        slide_page, slide_total, chunk_text
+                    )
+                    self._research.record(
+                        "slide_described",
+                        frame_id=frame.frame_id,
+                        page=slide_page,
+                        total=slide_total,
+                        words=len(chunk_text.split()),
+                        memory_slides=len(self._lesson_memory.notes),
+                        had_context=memory_context is not None,
+                    )
                 metrics.chunks_emitted += 1
 
                 # Invece di un return finale, facciamo lo yield per spedire il frammento audio!
@@ -314,6 +366,7 @@ class CaptionPipeline:
                 {
                     "mode": CaptionMode.AUTO.value,
                     **payload,
+                    "memory_context": memory_context,
                     "captions": generated,
                 },
             )

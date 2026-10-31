@@ -10,6 +10,11 @@ class PointingCaptionGeneratorPort(Protocol):
         self,
         event: PointingEvent,
         images: PointingImages,
+        context: str | None = None,
     ) -> PointingCaption | None:
-        """Genera e valida una risposta completa per un evento POINTING."""
+        """Genera e valida una risposta completa per un evento POINTING.
+
+        ``context`` porta ciò che il sistema ricorda, per esempio le slide già
+        descritte a lezione.
+        """
         ...

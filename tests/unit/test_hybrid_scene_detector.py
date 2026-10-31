@@ -114,3 +114,59 @@ async def test_rfdetr_candidate_refreshes_structural_keyframe() -> None:
     assert not repeated.is_change
     assert repeated.suppressed_by == "ssim"
     assert detector.calls == 2
+
+
+def _slide_jpeg(blur: int = 0, shift: int = 0) -> bytes:
+    image = np.full((480, 640, 3), 255, dtype=np.uint8)
+    cv2.putText(image, "Le derivate", (40 + shift, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 0, 0), 3)
+    for row, text in enumerate(["- limite", "- catena", "- prodotto"]):
+        cv2.putText(image, text, (60 + shift, 180 + row * 70), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2)
+    if blur:
+        image = cv2.GaussianBlur(image, (blur, blur), 0)
+    return cv2.imencode(".jpg", image)[1].tobytes()
+
+
+def _blank_slide_frame(frame_id: int, data: bytes) -> Frame:
+    return Frame(frame_id=frame_id, image_bytes=data, caption_mode=CaptionMode.AUTO)
+
+
+@pytest.mark.asyncio
+async def test_blurry_frame_waits_for_a_steady_one_without_moving_the_reference() -> None:
+    rfdetr = SequencedDetector([(), ()])
+    detector = HybridSceneDetectorAdapter(
+        # Soglia alta: anche la slide sfocata deve risultare un cambiamento,
+        # così è il filtro di nitidezza, non SSIM, a fermarla.
+        ssim_detector=SsimSceneDetectorAdapter(threshold=0.995),
+        rfdetr_detector=rfdetr,
+        min_sharpness=25.0,
+    )
+    blank = np.full((480, 640, 3), 255, dtype=np.uint8)
+    await detector.analyze(
+        _blank_slide_frame(1, cv2.imencode(".jpg", blank)[1].tobytes())
+    )
+
+    blurry = await detector.analyze(_blank_slide_frame(2, _slide_jpeg(blur=15)))
+    sharp = await detector.analyze(_blank_slide_frame(3, _slide_jpeg()))
+
+    assert blurry.suppressed_by == "blur"
+    assert blurry.sharpness < 25.0
+    assert sharp.is_change
+    assert sharp.sharpness > 25.0
+    assert rfdetr.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_without_threshold_blurry_frames_are_still_analysed() -> None:
+    rfdetr = SequencedDetector([(), ()])
+    detector = HybridSceneDetectorAdapter(
+        ssim_detector=SsimSceneDetectorAdapter(threshold=0.9),
+        rfdetr_detector=rfdetr,
+    )
+    blank = np.full((480, 640, 3), 255, dtype=np.uint8)
+    await detector.analyze(
+        _blank_slide_frame(1, cv2.imencode(".jpg", blank)[1].tobytes())
+    )
+
+    result = await detector.analyze(_blank_slide_frame(2, _slide_jpeg(blur=15)))
+
+    assert result.suppressed_by != "blur"

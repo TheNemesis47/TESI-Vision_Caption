@@ -49,6 +49,8 @@ from vision_caption.adapters.tts.ElevenLabsSynthesizer import ElevenLabsSynthesi
 from vision_caption.adapters.tts.FishSpeechSynthesizer import FishSpeechSynthesizer
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.services.caption_pipeline import CaptionPipeline
+from vision_caption.core.services.lesson_memory import LessonMemory
+from vision_caption.core.services.speech_text import lesson_speech
 from vision_caption.core.services.pointing.gesture_recognizer import (
     GestureRecognizerSettings,
     PointingGestureRecognizer,
@@ -124,6 +126,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.settings = settings
 
     use_mocks = settings.runtime.use_mocks
+    # Le funzioni pensate per lo studio (memoria delle slide, filtro delle
+    # foto mosse, simboli letti a parole) valgono solo in modalità lezione.
+    lesson = settings.vlm.context == "lesson"
     
     if use_mocks:
         logger.info("Initializing server in MOCK MODE (no external dependencies needed)...")
@@ -200,10 +205,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             # nuova slide. Decide SSIM, e la deduplica del testo fa il resto.
             suppress_unchanged_class_counts=(
                 settings.auto.suppress_unchanged_class_counts
-                and settings.vlm.context != "lesson"
+                and not lesson
             ),
             semantic_box_iou_threshold=(
                 settings.auto.semantic_box_iou_threshold
+            ),
+            min_sharpness=(
+                settings.auto.lesson_min_sharpness
+                if lesson and settings.auto.lesson_min_sharpness > 0
+                else None
             ),
         )
         
@@ -359,6 +369,20 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         research_recorder: ResearchRecorderPort | None = None,
     ) -> CaptionPipeline:
         sample_store = create_sample_store(research_recorder)
+        # Una memoria per connessione, condivisa fra AUTO e POINTING: le
+        # slide di uno studente non finiscono nel contesto di un altro, e il
+        # gesto sa a quale slide appartiene la formula indicata.
+        lesson_memory = (
+            LessonMemory(
+                max_notes=settings.auto.lesson_memory_slides,
+                max_idle_seconds=settings.auto.lesson_memory_idle_seconds,
+            )
+            if lesson and settings.auto.lesson_memory_slides > 0
+            else None
+        )
+        speech_text = (
+            lesson_speech(settings.auto.lesson_max_words) if lesson else None
+        )
         if use_mocks:
             hand_pose_estimator = MockHandPoseEstimator()
         else:
@@ -381,6 +405,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             speech_synthesizer=speech_synthesizer,
             research_recorder=research_recorder,
             sample_store=sample_store,
+            lesson_memory=lesson_memory,
+            speech_text=speech_text,
         )
         return CaptionPipeline(
             scene_detector=scene_detector,
@@ -399,6 +425,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             ),
             research_recorder=research_recorder,
             sample_store=sample_store,
+            lesson_memory=lesson_memory,
+            speech_text=speech_text,
         )
 
     # Lo stato temporale POINTING e il rate limiter nascono per connessione.

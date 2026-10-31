@@ -30,6 +30,7 @@ class FrameMetrics:
     frame_id: int
     outcome: str = "unknown"
     ssim_score: float | None = None
+    sharpness: float | None = None
     detect_ms: float | None = None
     vlm_first_chunk_ms: float | None = None
     vlm_total_ms: float | None = None

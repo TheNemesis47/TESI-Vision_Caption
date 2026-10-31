@@ -10,6 +10,18 @@ from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
 from vision_caption.core.ports.SceneDetectorPort import SceneDetectorPort
 
 
+SHARPNESS_REFERENCE_WIDTH = 640
+
+
+def measure_sharpness(gray: np.ndarray) -> float:
+    """Varianza del laplaciano, a larghezza fissa per renderla confrontabile."""
+    height, width = gray.shape[:2]
+    if width != SHARPNESS_REFERENCE_WIDTH and width > 0:
+        scale = SHARPNESS_REFERENCE_WIDTH / width
+        gray = cv2.resize(gray, (SHARPNESS_REFERENCE_WIDTH, max(1, round(height * scale))))
+    return round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 1)
+
+
 class HybridSceneDetectorAdapter:
     def __init__(
         self,
@@ -17,11 +29,13 @@ class HybridSceneDetectorAdapter:
         rfdetr_detector: SceneDetectorPort,
         suppress_unchanged_class_counts: bool = True,
         semantic_box_iou_threshold: float = 0.65,
+        min_sharpness: float | None = None,
     ):
         self._ssim_detector = ssim_detector
         self._rfdetr_detector = rfdetr_detector
         self._suppress_unchanged_class_counts = suppress_unchanged_class_counts
         self._semantic_box_iou_threshold = semantic_box_iou_threshold
+        self._min_sharpness = min_sharpness
         self._last_announced_detections: tuple[Detection, ...] | None = None
         self._pending_detections: tuple[Detection, ...] | None = None
 
@@ -89,6 +103,7 @@ class HybridSceneDetectorAdapter:
         nparr = np.frombuffer(frame.image_bytes, dtype=np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         ssim_result = await self._ssim_detector.analyze(img)
+        sharpness = measure_sharpness(img)
 
         # 2. Se non c'è, early exit
         if not ssim_result.is_change:
@@ -96,8 +111,21 @@ class HybridSceneDetectorAdapter:
                 is_change=False,
                 detections=(),
                 ssim_score=ssim_result.ssim_score,
+                sharpness=sharpness,
                 execution_ms=ssim_result.execution_ms,
                 suppressed_by="ssim",
+            )
+
+        # Un frame mosso non diventa il nuovo riferimento: il frame nitido che
+        # segue deve ancora risultare un cambiamento rispetto alla scena vecchia.
+        if self._min_sharpness is not None and sharpness < self._min_sharpness:
+            return SceneAnalysisResult(
+                is_change=False,
+                detections=(),
+                ssim_score=ssim_result.ssim_score,
+                sharpness=sharpness,
+                execution_ms=ssim_result.execution_ms,
+                suppressed_by="blur",
             )
 
         # 3. Se SSIM rileva un candidato, verifichiamo il significato con RF-DETR.
@@ -137,6 +165,7 @@ class HybridSceneDetectorAdapter:
                 is_change=False,
                 detections=rfdetr_result.detections,
                 ssim_score=ssim_result.ssim_score,
+                sharpness=sharpness,
                 execution_ms=(ssim_result.execution_ms or 0.0)
                 + (rfdetr_result.execution_ms or 0.0),
                 suppressed_by="semantic",
@@ -156,6 +185,7 @@ class HybridSceneDetectorAdapter:
             is_change=True,
             detections=rfdetr_result.detections,
             ssim_score=ssim_result.ssim_score,
+            sharpness=sharpness,
             execution_ms=(ssim_result.execution_ms or 0.0)
             + (rfdetr_result.execution_ms or 0.0),
         )

@@ -80,7 +80,7 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
             f"{time.perf_counter() - started:.1f}s."
         )
 
-    async def generate(self, frame: Frame):
+    async def generate(self, frame: Frame, context: str | None = None):
         # Convertiamo i byte JPEG in formato Base64 per la trasmissione HTTP
         base64_image = base64.b64encode(frame.image_bytes).decode("utf-8")
         
@@ -104,7 +104,11 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
                     "content": [
                         {
                             "type": "text",
-                            "text": self._prompt,
+                            "text": (
+                                f"{self._prompt}\n\n{context}"
+                                if context
+                                else self._prompt
+                            ),
                         },
                         {
                             "type": "image_url",

@@ -203,6 +203,17 @@ class AutoCaptionSettings(SettingsModel):
     caption_similarity_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     suppress_unchanged_class_counts: bool = True
     semantic_box_iou_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
+    # Memoria delle slide in modalità lezione: quante ricordarne (0 la
+    # spegne) e dopo quanti secondi senza slide dimenticarle.
+    lesson_memory_slides: int = Field(default=5, ge=0)
+    lesson_memory_idle_seconds: float = Field(default=900.0, gt=0.0)
+    # A lezione un frame mosso non arriva al modello: sotto questa nitidezza
+    # (varianza del laplaciano a 640 pixel) si aspetta un frame fermo. 0 la
+    # disattiva.
+    lesson_min_sharpness: float = Field(default=25.0, ge=0.0)
+    # Tetto di parole per frase a lezione, dopo aver scritto i simboli a
+    # parole: oltre si taglia alla fine dell'ultima frase completa.
+    lesson_max_words: int = Field(default=50, ge=5)
 
 
 class MediaPipeSettings(SettingsModel):
@@ -471,6 +482,13 @@ class AppSettings(SettingsModel):
                     "SEMANTIC_BOX_IOU_THRESHOLD",
                     0.65,
                 ),
+                lesson_memory_slides=value("LESSON_MEMORY_SLIDES", 5),
+                lesson_memory_idle_seconds=value(
+                    "LESSON_MEMORY_IDLE_SECONDS",
+                    900.0,
+                ),
+                lesson_min_sharpness=value("LESSON_MIN_SHARPNESS", 25.0),
+                lesson_max_words=value("LESSON_MAX_WORDS", 50),
             ),
             pointing=PointingSettings(
                 media_pipe=MediaPipeSettings(

@@ -24,6 +24,7 @@ SAFETY_FINISH_REASONS = {
 def build_pointing_prompt(
     event: PointingEvent,
     context: CaptionContext = "general",
+    memory: str | None = None,
 ) -> str:
     return f"""Sei il modulo visivo di un assistente per l'accessibilità.
 Ricevi tre immagini dello stesso istante:
@@ -69,7 +70,7 @@ Rispondi esclusivamente con un oggetto JSON nel formato:
   "alternatives": [],
   "needs_repointing": false,
   "needs_closer_view": false
-}}"""
+}}""" + (f"\n\n{memory}" if memory else "")
 
 
 def _image_content(label: str, image: bytes) -> list[dict]:
@@ -94,9 +95,10 @@ def build_pointing_payload(
     temperature: float = 0.1,
     context: CaptionContext = "general",
     json_mode: bool = True,
+    memory: str | None = None,
 ) -> dict:
     content: list[dict] = [
-        {"type": "text", "text": build_pointing_prompt(event, context)},
+        {"type": "text", "text": build_pointing_prompt(event, context, memory)},
     ]
     content.extend(
         _image_content("IMMAGINE 1 - CONTESTO COMPLETO", images.context_jpeg)
@@ -247,6 +249,7 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
         self,
         event: PointingEvent,
         images: PointingImages,
+        context: str | None = None,
     ) -> PointingCaption | None:
         payload = build_pointing_payload(
             event=event,
@@ -256,6 +259,7 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
             temperature=self._temperature,
             context=self._context,
             json_mode=self._json_mode,
+            memory=context,
         )
         headers = {
             "Content-Type": "application/json",

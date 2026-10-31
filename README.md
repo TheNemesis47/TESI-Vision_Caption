@@ -288,6 +288,25 @@ Il server invia tre tipi JSON sullo stesso endpoint `/ws/vision`:
 `CANDIDATE`/`ACTIVE`, progresso di conferma e stile del corridoio. Il contratto
 frontend completo è in `Docs/handoff_frontend_pointing_overlay.md`.
 
+### Modalità lezione
+
+`CAPTION_CONTEXT=lesson`, il predefinito, adatta il sistema allo studio: uno
+studente ipovedente segue una lezione e inquadra slide, lavagna o fogli.
+Rispetto a `general` cambia soltanto in questa modalità:
+
+| Funzione | Cosa fa | Impostazione |
+|---|---|---|
+| Prompt della lezione | titolo e fino a tre punti, formule a parole, grafici, tabelle e schemi riassunti; niente stanza né superfici; tace se non c'è nulla di utile | — |
+| Memoria delle slide | il modello riceve le ultime slide descritte e il loro numero di pagina; una slide già descritta senza contenuti nuovi non viene ripetuta | `LESSON_MEMORY_SLIDES`, `LESSON_MEMORY_IDLE_SECONDS` |
+| Foto mosse | un frame sfocato non arriva al modello e non sposta il riferimento SSIM | `LESSON_MIN_SHARPNESS` |
+| Voce | simboli letti a parole (x², ±, √, ≥); descrizioni tagliate a fine frase | `LESSON_MAX_WORDS` |
+| Puntamento | contesto delle slide nel prompt; un'etichetta si legge una volta, una formula solo a parole, le etichette di un grafico in fila no | — |
+| Classi RF-DETR | il filtro sulle classi è spento: fra due slide lo schermo resta uguale | — |
+
+`scripts/slide_prova.html` contiene sette slide di prova (titolo, formule,
+grafico a linee, a barre, parabola, tabella, schema) da proiettare a schermo
+intero.
+
 ### Log di ricerca
 
 Ogni connessione WebSocket scrive un file `logs/research/<data>_<sessione>.jsonl`,
@@ -301,7 +320,8 @@ della sessione) ed `event`.
 | `mode_change` | passaggio fra AUTO e POINTING |
 | `auto_frame` | esito della cascata per ogni frame AUTO, tempi, classi rilevate |
 | `utterance` | ciò che è stato detto: testo, durata audio, ritardo dal frame all'invio |
-| `utterance_skipped` | descrizione AUTO taciuta perché uguale alla precedente |
+| `utterance_skipped` | descrizione AUTO taciuta: uguale alla precedente, slide già descritta, nulla di utile |
+| `slide_described` | modalità lezione: slide descritta, con pagina e dimensione della memoria |
 | `pointing_activation` | gesto confermato, nuovo o spostamento su un altro bersaglio |
 | `pointing_blocked` | gesto scartato dall'attesa fra un evento e l'altro |
 | `pointing_result` | bersaglio, testo letto, confidenze, richiesta di ripuntare, tempi |

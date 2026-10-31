@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from time import monotonic, perf_counter
 
@@ -34,6 +35,7 @@ from vision_caption.core.ports.research_recorder_port import (
     NullResearchRecorder,
     ResearchRecorderPort,
 )
+from vision_caption.core.services.lesson_memory import LessonMemory
 from vision_caption.core.services.pointing.gesture_recognizer import (
     PointingGestureRecognizer,
 )
@@ -91,6 +93,45 @@ def compose_accessibility_caption(
     return f"{object_caption}{separator}C'è scritto: {visible_text}"
 
 
+# A lezione il testo letto sul bersaglio si legge solo se è breve: una
+# formula, una riga, un'etichetta. Le etichette di un grafico in fila ("60 57
+# 47 1950 1970") non aiutano, la descrizione del grafico sì.
+LESSON_MAX_VISIBLE_LINES = 2
+LESSON_MAX_VISIBLE_WORDS = 20
+_FORMULA_SIGNS = re.compile(r"[=+^²³√±≤≥<>∫∑π]")
+
+
+def compose_lesson_caption(caption: PointingCaption) -> str | None:
+    description = caption.description.strip()
+    target = caption.target.strip() if caption.target else ""
+    lines = [
+        line.strip()
+        for line in (caption.visible_text or "").splitlines()
+        if line.strip()
+    ]
+    visible_text = ", ".join(lines)
+    readable = (
+        visible_text
+        and len(lines) <= LESSON_MAX_VISIBLE_LINES
+        and len(visible_text.split()) <= LESSON_MAX_VISIBLE_WORDS
+    )
+    if not readable:
+        return description or target or None
+    # Una formula è già letta a parole nella descrizione: rileggerla scritta
+    # la direbbe due volte.
+    if description and _FORMULA_SIGNS.search(visible_text):
+        return description
+    # Se la descrizione si limita a ripetere il testo (un'etichetta), basta il
+    # testo: "Evaporazione" invece di "Etichetta di un nodo… C'è scritto:
+    # Evaporazione".
+    if not description or visible_text.casefold() in description.casefold():
+        return description or visible_text
+    if len(description.split()) <= 3 or description.casefold() == target.casefold():
+        return visible_text
+    separator = " " if description.endswith((".", "!", "?", ":")) else ". "
+    return f"{description}{separator}C'è scritto: {visible_text}"
+
+
 def _caption_fields(caption: PointingCaption) -> dict:
     """Ciò che il modello ha capito del bersaglio, per l'analisi dello studio."""
     return {
@@ -123,6 +164,8 @@ class PointingPipeline:
         clock: Callable[[], float] = monotonic,
         research_recorder: ResearchRecorderPort | None = None,
         sample_store: CaptionSampleStorePort | None = None,
+        lesson_memory: LessonMemory | None = None,
+        speech_text: Callable[[str], str] | None = None,
     ) -> None:
         self._hand_pose_estimator = hand_pose_estimator
         self._gesture_recognizer = gesture_recognizer
@@ -133,6 +176,10 @@ class PointingPipeline:
         self._clock = clock
         self._research = research_recorder or NullResearchRecorder()
         self._samples = sample_store or NullCaptionSampleStore()
+        # A lezione il gesto vede le slide già descritte e la frase segue le
+        # regole della lezione (breve, simboli letti a parole).
+        self._lesson_memory = lesson_memory
+        self._speech_text = speech_text
 
     async def process(
         self,
@@ -191,7 +238,12 @@ class PointingPipeline:
         images = await self._image_preparer.prepare(frame, event)
         prepared_at = perf_counter()
         try:
-            caption = await self._caption_generator.generate(event, images)
+            memory_context = (
+                self._lesson_memory.context() if self._lesson_memory else None
+            )
+            caption = await self._caption_generator.generate(
+                event, images, memory_context
+            )
         except Exception as error:
             # Il gesto è perso, la sessione no: si può ripuntare subito.
             logger.exception(
@@ -214,7 +266,12 @@ class PointingPipeline:
             yield await self._repoint_prompt(frame)
             return
 
-        spoken_caption = compose_accessibility_caption(caption)
+        if self._speech_text is not None:
+            spoken_caption = compose_lesson_caption(caption)
+            if spoken_caption is not None:
+                spoken_caption = self._speech_text(spoken_caption)
+        else:
+            spoken_caption = compose_accessibility_caption(caption)
         if spoken_caption is None:
             self._result(
                 frame,

@@ -46,6 +46,9 @@ def summarize(events: list[dict]) -> dict:
         later["t"] - earlier["t"]
         for earlier, later in zip(utterances, utterances[1:])
     ]
+    skipped_reasons = Counter(
+        item.get("reason") for item in by_name.get("utterance_skipped", [])
+    )
     pointing = by_name.get("pointing_result", [])
     pointing_outcomes = Counter(item.get("outcome") for item in pointing)
     auto_outcomes = Counter(
@@ -81,7 +84,6 @@ def summarize(events: list[dict]) -> dict:
             for outcome, count in auto_outcomes.items()
             if outcome.startswith("suppressed")
         ),
-        "auto_skipped_similar": len(by_name.get("utterance_skipped", [])),
         "pointing_activations": len(by_name.get("pointing_activation", [])),
         "pointing_retargets": sum(
             1 for item in by_name.get("pointing_activation", []) if item.get("retarget")
@@ -91,6 +93,26 @@ def summarize(events: list[dict]) -> dict:
         "pointing_failed": len(pointing) - pointing_outcomes.get("spoken", 0),
         "pointing_needs_repointing": sum(
             1 for item in pointing if item.get("needs_repointing")
+        ),
+        # Modalità lezione: quante slide, quante ripetizioni evitate, quanta
+        # voce per slide. Restano a zero nelle sessioni in modalità general.
+        "slides_described": len(by_name.get("slide_described", [])),
+        "distinct_pages": len(
+            {
+                (item.get("page"), item.get("total"))
+                for item in by_name.get("slide_described", [])
+                if item.get("page") is not None
+            }
+        ),
+        "repeats_avoided": skipped_reasons.get("same_slide", 0),
+        "nothing_to_say": skipped_reasons.get("nothing_to_say", 0),
+        "similar_skipped": skipped_reasons.get("similar_to_previous", 0),
+        "blurry_frames": auto_outcomes.get("suppressed_blur", 0),
+        "median_words": median_or_none(
+            [len((item.get("text") or "").split()) for item in utterances if item.get("text")]
+        ),
+        "longest_audio_s": round(
+            max((item.get("audio_duration_s") or 0.0 for item in utterances), default=0.0), 1
         ),
         "markers": len(by_name.get("marker", [])),
         "errors": len(by_name.get("error", [])),

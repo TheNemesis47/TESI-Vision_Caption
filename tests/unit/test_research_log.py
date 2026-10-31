@@ -301,7 +301,7 @@ async def test_auto_survives_a_failing_vlm() -> None:
 @pytest.mark.asyncio
 async def test_pointing_survives_a_failing_vlm() -> None:
     class FailingGenerator:
-        async def generate(self, event, images):
+        async def generate(self, event, images, context=None):
             raise ConnectionError("ollama non risponde")
 
     recorder = MemoryRecorder()
@@ -348,7 +348,9 @@ async def test_auto_keeps_the_frame_with_every_generated_caption() -> None:
     assert first_name == "auto_000001"
     assert first_images == {"frame.jpg": b"fake-jpeg"}
     assert first["outcome"] == "completed"
-    assert first["captions"] == [{"text": "Titolo: le derivate.", "spoken": True}]
+    assert first["captions"] == [
+        {"text": "Titolo: le derivate.", "spoken": True, "page": None, "total": None}
+    ]
     assert second["captions"][0]["spoken"] is False
 
 
@@ -433,3 +435,95 @@ async def test_auto_stays_silent_when_the_model_has_nothing_useful_to_say() -> N
     assert skipped["reason"] == "nothing_to_say"
     assert recorder.named("auto_frame")[0]["outcome"] == "no_audio"
     scene_detector.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_strips_the_page_and_passes_memory_to_the_model() -> None:
+    from vision_caption.core.services.lesson_memory import LessonMemory
+
+    class ScriptedGenerator:
+        def __init__(self) -> None:
+            self.contexts: list[str | None] = []
+            self.answers = iter(
+                ["PAGINA: 2/7\nTitolo: Popolazione italiana.", "PAGINA: 3/7\nGrafico in crescita."]
+            )
+
+        async def generate(self, frame, context=None):
+            self.contexts.append(context)
+            yield next(self.answers)
+
+    class RecordingSpeech:
+        def __init__(self) -> None:
+            self.texts: list[str] = []
+
+        async def synthesize(self, text: str):
+            self.texts.append(text)
+            return await FakeSpeechSynthesizer().synthesize(text)
+
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    generator = ScriptedGenerator()
+    speech = RecordingSpeech()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=generator,
+        speech_synthesizer=speech,
+        rate_limiter=rate_limiter,
+        lesson_memory=LessonMemory(),
+    )
+
+    [_ async for _ in pipeline.process(_auto_frame(1))]
+    [_ async for _ in pipeline.process(_auto_frame(2))]
+
+    assert speech.texts == ["Titolo: Popolazione italiana.", "Grafico in crescita."]
+    assert generator.contexts[0] is None
+    assert "Slide 2 di 7: Titolo: Popolazione italiana." in generator.contexts[1]
+
+
+@pytest.mark.asyncio
+async def test_auto_stays_silent_on_a_slide_already_described() -> None:
+    from vision_caption.core.services.lesson_memory import LessonMemory
+
+    class RepeatingGenerator:
+        def __init__(self) -> None:
+            self.answers = iter(
+                [
+                    "PAGINA: 4/7\nTitolo: Fonti di energia (%). Gas 45, rinnovabili 30.",
+                    "PAGINA: 4/7\nTitolo: Fonti di energia. Barre: gas e rinnovabili.",
+                ]
+            )
+
+        async def generate(self, frame, context=None):
+            yield next(self.answers)
+
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    recorder = MemoryRecorder()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=RepeatingGenerator(),
+        speech_synthesizer=FakeSpeechSynthesizer(),
+        rate_limiter=rate_limiter,
+        research_recorder=recorder,
+        lesson_memory=LessonMemory(),
+    )
+
+    first = [_ async for _ in pipeline.process(_auto_frame(1))]
+    second = [_ async for _ in pipeline.process(_auto_frame(2))]
+
+    assert len(first) == 1
+    assert second == []
+    (skipped,) = recorder.named("utterance_skipped")
+    assert skipped["reason"] == "same_slide"
+    (described,) = recorder.named("slide_described")
+    assert described["page"] == 4

@@ -12,4 +12,7 @@ class SceneAnalysisResult(BaseModel):
     # "ssim" per il filtro strutturale, "semantic" per il confronto fra le
     # classi rilevate. Serve a distinguere i due livelli in fase di misura.
     suppressed_by: str | None = None
+    # Nitidezza del frame (varianza del laplaciano a 640 pixel di larghezza):
+    # bassa per immagini mosse o sfocate, su cui il modello non legge nulla.
+    sharpness: float | None = None
     model_config = ConfigDict(frozen=True)

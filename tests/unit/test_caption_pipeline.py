@@ -46,12 +46,12 @@ class FakeCaptionGenerator:
     def __init__(self, text: str = "Una sedia davanti a un tavolo.") -> None:
         self.text = text
 
-    async def generate(self, frame: Frame):
+    async def generate(self, frame: Frame, context=None):
         yield self.text
 
 
 class SlowCaptionGenerator:
-    async def generate(self, frame: Frame):
+    async def generate(self, frame: Frame, context=None):
         await asyncio.sleep(0.05)
         yield "Questa risposta arriva troppo tardi."
 

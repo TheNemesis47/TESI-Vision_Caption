@@ -188,3 +188,14 @@ def test_parser_tolerates_prose_and_missing_fields_from_local_models() -> None:
 
 def test_parser_still_rejects_text_without_json() -> None:
     assert parse_pointing_caption("Non vedo nulla di preciso.") is None
+
+
+def test_slide_memory_is_appended_to_the_pointing_prompt() -> None:
+    from vision_caption.adapters.vlm.OpenRouterPointingCaptionGenerator import (
+        build_pointing_prompt,
+    )
+
+    prompt = build_pointing_prompt(_event(), "lesson", "Slide 2 di 7: Equazioni.")
+
+    assert prompt.rstrip().endswith("Slide 2 di 7: Equazioni.")
+    assert "Slide 2 di 7" not in build_pointing_prompt(_event(), "lesson")
