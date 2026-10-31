@@ -252,14 +252,19 @@ async def vision_websocket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         logger.warning("Client disconnected from WebSocket.")
     except Exception as error:
-        end_reason = "server_error"
-        research.record(
-            "error",
-            component="websocket",
-            error_type=type(error).__name__,
-            message=str(error)[:500],
-        )
-        logger.exception("Error in WebSocket processing")
+        if isinstance(error, RuntimeError) and "close message" in str(error):
+            # Il telefono ha chiuso mentre il server rispondeva: è una
+            # disconnessione, non un errore del server.
+            logger.warning("Client disconnected while the server was answering.")
+        else:
+            end_reason = "server_error"
+            research.record(
+                "error",
+                component="websocket",
+                error_type=type(error).__name__,
+                message=str(error)[:500],
+            )
+            logger.exception("Error in WebSocket processing")
     finally:
         research.record(
             "session_end",

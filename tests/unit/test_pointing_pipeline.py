@@ -30,6 +30,7 @@ from vision_caption.core.services.pointing.pointing_event_gate import (
     PointingEventGate,
 )
 from vision_caption.core.services.pointing.pointing_pipeline import (
+    REPOINT_PROMPT,
     PointingPipeline,
     compose_accessibility_caption,
 )
@@ -235,7 +236,7 @@ async def test_activation_produces_one_complete_caption_and_one_audio() -> None:
 
 
 @pytest.mark.asyncio
-async def test_invalid_vlm_result_is_never_sent_to_tts() -> None:
+async def test_invalid_vlm_result_asks_to_point_again() -> None:
     pipeline, _, _, preparer, generator, speech = _pipeline(
         (_activation(),),
         None,
@@ -243,10 +244,10 @@ async def test_invalid_vlm_result_is_never_sent_to_tts() -> None:
 
     results = [result async for result in pipeline.process(_frame())]
 
-    assert results == []
+    assert [result.caption for result in results] == [REPOINT_PROMPT]
     assert preparer.calls == 1
     assert generator.calls == 1
-    assert speech.calls == []
+    assert speech.calls == [REPOINT_PROMPT]
 
 
 @pytest.mark.asyncio

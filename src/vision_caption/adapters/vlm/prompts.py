@@ -9,6 +9,8 @@ mostrato, che lo studente non vede, e non ciò che il docente sta già dicendo.
 
 from typing import Literal
 
+from vision_caption.core.services.caption_pipeline import NOTHING_TO_SAY
+
 
 CaptionContext = Literal["general", "lesson"]
 
@@ -23,6 +25,8 @@ AUTO_PROMPTS: dict[str, str] = {
         "- Se non sei sicuro del tipo di un oggetto, usa un termine generico "
         "(es. 'occhiali' invece di 'occhiali da sole', 'accessorio al collo' invece di 'collare').\n"
         "- Se non riconosci con certezza l'ambiente, non nominarlo: descrivi solo gli elementi visibili.\n"
+        "- Non descrivere pavimento, pareti, soffitto, piastrelle, rivestimenti, né colori "
+        "e materiali delle superfici: nomina oggetti e persone, non l'ambiente che li contiene.\n"
         "- Scrivi numeri, orari e date in lettere, nella forma in cui devono essere pronunciati in italiano.\n"
         "- Niente elenchi, markdown o intestazioni. Solo testo semplice in ITALIANO."
     ),
@@ -42,9 +46,10 @@ AUTO_PROMPTS: dict[str, str] = {
         "- Grafici e schemi: di' che tipo di figura è e cosa mostra (assi, andamento, "
         "elementi principali e collegamenti), senza elencare ogni dettaglio.\n"
         "- Tabelle: quante righe e colonne e quali intestazioni.\n"
-        "- Se non è inquadrato materiale didattico, descrivi direttamente la scena in "
-        "una sola frase di al massimo quindici parole, senza dire che manca il "
-        "materiale didattico.\n"
+        "- Se non è inquadrato materiale didattico, nomina in una sola frase di al "
+        "massimo dodici parole soltanto gli oggetti utili allo studente (libri, "
+        "quaderni, fogli, computer, porte, ostacoli vicini). Se non ce ne sono, "
+        f"rispondi esattamente {NOTHING_TO_SAY} e nient'altro.\n"
         "REGOLE:\n"
         "- Parla direttamente del contenuto: non ripetere queste istruzioni e non "
         "nominare lo studente, la lezione o l'aula.\n"
@@ -52,6 +57,8 @@ AUTO_PROMPTS: dict[str, str] = {
         "dillo in poche parole e suggerisci di avvicinarsi, senza indovinare.\n"
         "- Non descrivere il docente né le persone in aula, salvo che indichino qualcosa "
         "sulla slide.\n"
+        "- Non descrivere mai pavimento, pareti, soffitto, piastrelle, rivestimenti, "
+        "termosifoni, né colori e materiali di superfici e mobili.\n"
         "- Al massimo sessanta parole in tutto, in frasi brevi.\n"
         "- Numeri, simboli, date e unità di misura in lettere, come si pronunciano in "
         "italiano.\n"

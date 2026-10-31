@@ -44,6 +44,10 @@ from vision_caption.core.services.pointing.pointing_event_gate import (
 
 LANDMARK_DECIMALS = 4
 
+# Un gesto confermato merita sempre una risposta: senza, chi punta non sa se
+# il sistema ha visto il gesto e se deve ripuntare.
+REPOINT_PROMPT = "Non capisco cosa stai indicando. Prova a puntare di nuovo."
+
 
 def collect_hand_landmarks(
     hands: tuple[HandObservation, ...],
@@ -207,6 +211,7 @@ class PointingPipeline:
         }
         if caption is None:
             self._result(frame, images, outcome="no_caption", **timings)
+            yield await self._repoint_prompt(frame)
             return
 
         spoken_caption = compose_accessibility_caption(caption)
@@ -218,6 +223,7 @@ class PointingPipeline:
                 **timings,
                 **_caption_fields(caption),
             )
+            yield await self._repoint_prompt(frame)
             return
 
         audio = await self._speech_synthesizer.synthesize(spoken_caption)
@@ -233,6 +239,14 @@ class PointingPipeline:
         yield CaptionResult(
             frame_id=frame.frame_id,
             caption=spoken_caption,
+            audio=audio,
+        )
+
+    async def _repoint_prompt(self, frame: Frame) -> CaptionResult:
+        audio = await self._speech_synthesizer.synthesize(REPOINT_PROMPT)
+        return CaptionResult(
+            frame_id=frame.frame_id,
+            caption=REPOINT_PROMPT,
             audio=audio,
         )
 

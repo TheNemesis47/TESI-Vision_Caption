@@ -23,6 +23,15 @@ from vision_caption.core.services.pointing.pointing_pipeline import (
     PointingPipeline,
 )
 
+# Risposta con cui il modello dichiara che non c'è nulla di utile da dire:
+# il sistema tace invece di descrivere una stanza qualsiasi.
+NOTHING_TO_SAY = "NIENTE"
+
+
+def _is_nothing_to_say(text: str) -> bool:
+    return text.strip().strip(".!").upper() == NOTHING_TO_SAY
+
+
 class CaptionPipeline:
     def __init__(
         self,
@@ -194,6 +203,20 @@ class CaptionPipeline:
                     )
 
                 if not chunk_text:
+                    continue
+
+                if _is_nothing_to_say(chunk_text):
+                    generated.append(
+                        {"text": chunk_text, "spoken": False,
+                         "reason": "nothing_to_say"}
+                    )
+                    self._research.record(
+                        "utterance_skipped",
+                        mode=CaptionMode.AUTO.value,
+                        frame_id=frame.frame_id,
+                        reason="nothing_to_say",
+                        text=chunk_text,
+                    )
                     continue
 
                 # FRESHNESS GUARD (pre-TTS): non sintetizziamo audio per una scena

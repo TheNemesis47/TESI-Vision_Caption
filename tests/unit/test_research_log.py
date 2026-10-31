@@ -406,3 +406,30 @@ def test_vlm_warm_up_sends_one_small_request(monkeypatch) -> None:
     assert "Authorization" not in request["headers"]
     assert request["json"]["max_tokens"] == 1
     assert request["timeout"] == 300
+
+
+@pytest.mark.asyncio
+async def test_auto_stays_silent_when_the_model_has_nothing_useful_to_say() -> None:
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    recorder = MemoryRecorder()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=FakeCaptionGenerator("NIENTE."),
+        speech_synthesizer=FakeSpeechSynthesizer(),
+        rate_limiter=rate_limiter,
+        research_recorder=recorder,
+    )
+
+    results = [_ async for _ in pipeline.process(_auto_frame(1))]
+
+    assert results == []
+    (skipped,) = recorder.named("utterance_skipped")
+    assert skipped["reason"] == "nothing_to_say"
+    assert recorder.named("auto_frame")[0]["outcome"] == "no_audio"
+    scene_detector.commit.assert_not_called()
