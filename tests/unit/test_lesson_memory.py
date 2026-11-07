@@ -110,3 +110,13 @@ def test_same_page_number_with_a_different_title_is_a_new_slide() -> None:
     memory.remember(3, 7, "Titolo: Le derivate. Regola della catena.")
 
     assert not memory.is_repeat(3, 7, "Titolo: Stati della materia. Tabella.")
+
+
+def test_first_picture_is_new_even_below_the_word_growth_threshold() -> None:
+    memory = LessonMemory(clock=lambda: 0.0)
+    text = "Titolo: Realtà virtuale.\nTesto: " + "contenuto " * 30
+    memory.remember(4, 9, text)
+    with_image = text + "\nImmagine: tavolo nero."
+    assert not memory.is_repeat(4, 9, with_image)
+    memory.remember(4, 9, with_image)
+    assert memory.is_repeat(4, 9, with_image)

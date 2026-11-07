@@ -320,7 +320,7 @@ Rispetto a `general` cambia soltanto in questa modalità:
 | Prompt della lezione | titolo e fino a tre punti, formule a parole, grafici, tabelle e schemi riassunti; niente stanza né superfici; tace se non c'è nulla di utile | — |
 | Memoria delle slide | il modello riceve le ultime slide descritte e il loro numero di pagina; una slide già descritta senza contenuti nuovi non viene ripetuta | `LESSON_MEMORY_SLIDES`, `LESSON_MEMORY_IDLE_SECONDS` |
 | Foto mosse | un frame sfocato non arriva al modello e non sposta il riferimento SSIM | `LESSON_MIN_SHARPNESS` |
-| Voce | simboli letti a parole (x², ±, √, ≥); descrizioni tagliate a fine frase | `LESSON_MAX_WORDS` |
+| Voce | simboli letti a parole (x², ±, √, ≥); testo prima delle figure, con quota riservata alle righe `Immagine:`/`Figura:` entro lo stesso tetto | `LESSON_MAX_WORDS` |
 | Puntamento | contesto delle slide nel prompt; un'etichetta si legge una volta, una formula solo a parole, le etichette di un grafico in fila no | — |
 | Gesto di stop | la mano aperta davanti alla fotocamera, tenuta un attimo, ferma subito la voce sul telefono; il frame con la mano non viene descritto | `LESSON_STOP_GESTURE`, `LESSON_STOP_HOLD_SECONDS` |
 | Classi RF-DETR | il filtro sulle classi è spento: fra due slide lo schermo resta uguale | — |

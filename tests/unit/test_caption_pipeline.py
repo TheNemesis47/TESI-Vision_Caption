@@ -324,3 +324,31 @@ async def test_near_identical_caption_is_not_synthesized_twice() -> None:
     assert len(risultati_prima) == 1
     assert risultati_seconda == []
     assert len(synthesizer.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_first_picture_reaches_audio_even_after_a_similar_text_only_caption() -> None:
+    from vision_caption.core.services.lesson_memory import LessonMemory
+    from vision_caption.core.services.speech_text import lesson_speech
+
+    detector = Mock(spec=SceneDetectorPort)
+    detector.analyze = AsyncMock(return_value=SceneAnalysisResult(is_change=True))
+    detector.commit = AsyncMock()
+    limiter = Mock(spec=RateLimiter)
+    limiter.can_execute.return_value = True
+    text = "Titolo: Realtà virtuale.\nTesto: " + "contenuto " * 30 + "."
+    generator = FakeCaptionGenerator("PAGINA: 4/9\n" + text)
+    memory = LessonMemory()
+    pipeline = CaptionPipeline(
+        detector, generator, FakeSpeechSynthesizer(), limiter,
+        lesson_memory=memory, speech_text=lesson_speech(50),
+    )
+    first = [r async for r in pipeline.process(Frame(frame_id=1, image_bytes=b"jpeg", caption_mode=CaptionMode.AUTO))]
+    assert len(first) == 1
+    generator.text += "\nImmagine: tavolo nero."
+    second = [r async for r in pipeline.process(Frame(frame_id=2, image_bytes=b"jpeg", caption_mode=CaptionMode.AUTO))]
+    assert len(second) == 1
+    assert "Immagine: tavolo nero." in second[0].caption
+    third = [r async for r in pipeline.process(Frame(frame_id=3, image_bytes=b"jpeg", caption_mode=CaptionMode.AUTO))]
+    assert third == []
+    assert memory.notes[-1].page == 4 and memory.notes[-1].total == 9

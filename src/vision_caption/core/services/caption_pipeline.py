@@ -18,6 +18,7 @@ from vision_caption.core.ports.research_recorder_port import (
 )
 from vision_caption.core.ports.hand_pose_estimator_port import HandPoseEstimatorPort
 from vision_caption.core.services.lesson_memory import LessonMemory, split_page_tag
+from vision_caption.core.services.speech_text import has_visual_description
 from vision_caption.core.services.pointing.stop_gesture import StopGestureDetector
 from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
@@ -295,7 +296,12 @@ class CaptionPipeline:
                     autojunk=False,
                 ).ratio()
 
-                if caption_similarity >= self._caption_similarity_threshold:
+                first_visual = (
+                    self._speech_text is not None
+                    and has_visual_description(chunk_text)
+                    and not has_visual_description(self._last_caption)
+                )
+                if caption_similarity >= self._caption_similarity_threshold and not first_visual:
                     logger.info(
                         f"Caption '{chunk_text}' troppo simile alla precedente "
                         f"({caption_similarity:.3f}); saltata."

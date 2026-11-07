@@ -54,10 +54,21 @@ AUTO_PROMPTS: dict[str, str] = {
         f"nuovo, dopo la riga {PAGE_TAG} scrivi solo {NOTHING_TO_SAY}. Se sono "
         "comparsi contenuti nuovi, di' solo quelli.\n"
         "COSA DIRE:\n"
+        "- Ordine obbligatorio: prima il testo della slide, poi ogni immagine. "
+        "Usa righe distinte: Titolo: (se presente), Testo: (se presente), "
+        "Immagine: per ciascuna foto o illustrazione. Riserva sempre spazio "
+        "alle immagini: riassumi il testo lungo, non eliminare la figura.\n"
         "- Slide, lavagna o schermo: se c'è un titolo comincia con \"Titolo:\" seguito dal "
         "titolo. Poi riporta i contenuti principali nell'ordine in cui compaiono, al "
         "massimo tre punti. Riporta le parole chiave come sono scritte e riassumi solo "
         "i testi lunghi.\n"
+        "- Fotografie e illustrazioni: descrivile SEMPRE se visibili, anche "
+        "quando la slide contiene testo. Nella riga Immagine: nomina gli "
+        "oggetti principali, le azioni, le relazioni e i colori chiaramente "
+        "distinguibili. Non basta ripetere il titolo o dire solo una stanza "
+        "virtuale. Descrivi anche oggetti e mobili dentro la figura; se un "
+        "colore non è distinguibile omettilo, senza indovinarlo. Se la figura "
+        "è tagliata descrivi la parte visibile, senza completarla a memoria.\n"
         "- Formule: leggile a parole, come le pronuncerebbe un docente (per esempio "
         "\"x al quadrato più due x uguale zero\").\n"
         "- Grafici e schemi: di' che tipo di figura è e cosa mostra (assi, andamento, "
@@ -76,8 +87,10 @@ AUTO_PROMPTS: dict[str, str] = {
         "- Non descrivere il docente né le persone in aula, salvo che indichino qualcosa "
         "sulla slide.\n"
         "- Non descrivere mai pavimento, pareti, soffitto, piastrelle, rivestimenti, "
-        "termosifoni, né colori e materiali di superfici e mobili.\n"
-        "- Al massimo quaranta parole in tutto, in frasi brevi: lo studente sta "
+        "termosifoni, né colori e materiali di superfici e mobili dell'aula reale. "
+        "Questo divieto NON riguarda gli oggetti dentro le immagini della slide.\n"
+        "- Al massimo cinquanta parole in tutto: circa trenta per titolo e testo, "
+        "le restanti per le immagini. Usa frasi brevi: lo studente sta "
         "ascoltando anche il docente.\n"
         "- Tutto in italiano, anche i nomi dei tipi di grafico.\n"
         "- Numeri, anni e percentuali in cifre (1950, 45 per cento); i simboli delle "
@@ -109,8 +122,13 @@ non lo schermo o la lavagna intera.
   parole come la pronuncerebbe un docente.
 - Grafico o schema: in description di' che tipo di figura è e cosa mostra;
   non copiare in visible_text le etichette degli assi o i valori in fila.
+- Immagini, fotografie e illustrazioni: in description nomina gli oggetti,
+  le azioni e i colori distinguibili, fino a venti parole. Non basta il
+  titolo o un'etichetta vaga. Questa regola riguarda anche i mobili dentro
+  le figure; non descrivere le superfici dell'aula reale.
 - description: al massimo dodici parole, senza ripetere il testo già in
-  visible_text. Se il bersaglio è un'etichetta, basta visible_text.
+  visible_text, salvo le immagini (venti parole). Se il bersaglio è
+  un'etichetta, basta visible_text.
 - Se il blocco è troppo piccolo o sfocato per leggerlo, imposta
   needs_closer_view=true invece di indovinare.
 - target_kind=unknown: bersaglio incerto; chiedi di ripuntare senza

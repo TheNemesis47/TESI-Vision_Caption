@@ -63,6 +63,31 @@ _SYMBOLS = (
 )
 
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+_LESSON_SECTION = re.compile(
+    r"(?im)^[ \t]*(?P<label>titolo|testo|immagine|figura)\b(?::|(?= di\b))"
+)
+
+
+def lesson_sections(text: str) -> tuple[str, list[str]]:
+    """Separa le figure marcate dal VLM, senza dedurne di inesistenti."""
+    matches = list(_LESSON_SECTION.finditer(text))
+    if not matches:
+        return text, []
+    content = [text[:matches[0].start()].strip()]
+    figures = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        section = text[match.start():end].strip()
+        if match.group("label").casefold() in ("immagine", "figura"):
+            if text[match.end():end].strip():
+                figures.append(section)
+        else:
+            content.append(section)
+    return "\n".join(part for part in content if part), figures
+
+
+def has_visual_description(text: str) -> bool:
+    return bool(lesson_sections(text)[1])
 
 
 def speakable_math(text: str) -> str:
@@ -77,6 +102,8 @@ def speakable_math(text: str) -> str:
 
 def limit_words(text: str, max_words: int) -> str:
     """Taglia alla fine dell'ultima frase completa entro max_words parole."""
+    if max_words <= 0:
+        return ""
     words = text.split()
     if len(words) <= max_words:
         return text
@@ -91,6 +118,25 @@ def lesson_speech(max_words: int):
     """Il filtro completo della modalità lezione, da applicare prima della voce."""
 
     def prepare(text: str) -> str:
-        return limit_words(speakable_math(text), max_words)
+        content, figures = lesson_sections(text)
+        content = speakable_math(content)
+        figures = [speakable_math(figure) for figure in figures]
+        if not figures:
+            return limit_words(content, max_words)
+        if len((content + " " + " ".join(figures)).split()) <= max_words:
+            return "\n".join(part for part in [content, *figures] if part)
+        # Fino a metà del budget per le figure, al massimo dodici parole
+        # riservate a ciascuna. Il testo inutilizzato torna alle immagini.
+        quota = max(1, min(12, max_words // (2 * len(figures))))
+        reserves = [min(quota, len(figure.split())) for figure in figures]
+        body = limit_words(content, max(0, max_words - sum(reserves))) if content else ""
+        remaining = max_words - len(body.split())
+        kept = []
+        for index, figure in enumerate(figures):
+            budget = max(0, remaining - sum(reserves[index + 1:]))
+            if budget:
+                kept.append(limit_words(figure, budget))
+                remaining -= len(kept[-1].split())
+        return "\n".join(part for part in [body, *kept] if part)
 
     return prepare

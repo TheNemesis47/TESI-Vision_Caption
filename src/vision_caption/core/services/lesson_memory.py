@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from time import monotonic
 
+from vision_caption.core.services.speech_text import has_visual_description
+
 
 PAGE_TAG = "PAGINA"
 
@@ -159,6 +161,9 @@ class LessonMemory:
         if title and previous_title and SequenceMatcher(
             None, title, previous_title
         ).ratio() < DIFFERENT_TITLE_SIMILARITY:
+            return False
+        if has_visual_description(text) and not has_visual_description(previous.text):
+            # La figura prima omessa è contenuto nuovo anche quando è breve.
             return False
         return len(text.split()) < NEW_CONTENT_GROWTH * len(previous.text.split())
 

@@ -55,3 +55,20 @@ def test_lesson_speech_applies_both() -> None:
     assert prepare("Formula: x² = 4. Poi molte altre parole qui.") == (
         "Formula: x al quadrato uguale 4."
     )
+
+
+def test_lesson_budget_keeps_the_picture_after_long_slide_text() -> None:
+    text = "Titolo: Realtà virtuale.\nTesto: " + "contenuto " * 60
+    image = "Immagine: stanza con tavolo nero, sedie rosse e mobile blu."
+    spoken = lesson_speech(50)(text + ".\n" + image)
+    assert image in spoken
+    assert spoken.index("Titolo:") < spoken.index("Immagine:")
+    assert len(spoken.split()) <= 50
+
+
+def test_lesson_budget_keeps_each_picture_and_puts_text_first() -> None:
+    text = "Immagine: tavolo nero e sedie rosse.\nImmagine: persona con visore giallo.\nTesto: " + "parola " * 60
+    spoken = lesson_speech(50)(text)
+    assert "tavolo nero" in spoken and "visore giallo" in spoken
+    assert spoken.startswith("Testo:")
+    assert len(spoken.split()) <= 50
