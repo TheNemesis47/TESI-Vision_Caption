@@ -394,3 +394,32 @@ Uvicorn serve frontend, `/health` e `/ws/vision` in HTTP locale su
 `127.0.0.1:8765`. Cloudflare Tunnel deve inoltrare l'hostname pubblico
 `vision.serverpersonaledomotico95.online` verso `http://127.0.0.1:8765`.
 HTTPS e WSS terminano su Cloudflare; il backend non carica certificati TLS.
+
+### Eleven v4 Turbo e misura della latenza
+
+`ELEVENLABS_MODEL_ID=eleven_v4_turbo` abilita il WebSocket Text to Dialogue
+nell'adapter ElevenLabs; il resto della pipeline usa la stessa porta e lo
+stesso formato MP3. `TTS_PROVIDER=elevenlabs` e una chiave valida restano
+necessari. Il modello predefinito non cambia. Anche `eleven_flash_v2_5` è
+selezionabile tramite la stessa variabile.
+
+I circa 100 ms pubblicati da ElevenLabs sono una mediana lato server con
+voce già calda. La porta di VisionCaption restituisce ancora l'audio completo:
+un primo chunk rapido non equivale all'inizio della voce sul telefono.
+Il benchmark salva primo chunk v4, audio completo e MP3 italiani:
+
+```bash
+uv run python scripts/benchmark_elevenlabs.py --repeat 3
+```
+
+Il confronto locale UICI ha dato mediane di 504,5 ms per l'MP3 completo con
+Turbo v2.5, 520,2 ms con Flash v2.5 e 955,5 ms con v4 Turbo; il primo chunk v4
+arrivava in mediana a 240,5 ms. Sono nove chiamate per modello, stesso client,
+voce e tre testi italiani. Il passaggio automatico a v4 non è quindi indicato
+come ottimizzazione della latenza con l'attuale riproduzione bufferizzata.
+Per sfruttare lo streaming fino al telefono occorre estendere anche il
+contratto audio e il client; questa modifica resta separata dai fix UICI.
+
+Riferimenti: [modelli](https://elevenlabs.io/docs/overview/models),
+[metodologia delle latenze](https://elevenlabs.io/docs/eleven-api/concepts/latency-methodology),
+[protocollo Text to Dialogue](https://elevenlabs.io/docs/api-reference/text-to-dialogue/ttd-websocket).
