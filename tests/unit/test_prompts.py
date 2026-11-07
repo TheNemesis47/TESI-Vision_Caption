@@ -43,5 +43,5 @@ async def _generate_with_memory(monkeypatch):
 async def test_current_image_instructions_follow_the_historical_memory(monkeypatch):
     prompt,result=await _generate_with_memory(monkeypatch)
     assert prompt.index('Slide precedente') < prompt.index("ISTRUZIONI PER L'IMMAGINE CORRENTE")
-    assert 'entro i suoi confini' in prompt
+    assert 'dentro la slide' in prompt
     assert result == ['PAGINA: nessuna\nTitolo: Prova.']
