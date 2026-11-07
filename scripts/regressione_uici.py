@@ -151,17 +151,26 @@ async def main(args):
         raise SystemExit('Chiave OpenRouter assente: impostare OPENROUTER_API_KEY in .env o usare --offline.')
     rows = []
     semaphore = asyncio.Semaphore(args.concurrency)
+    request_lock = asyncio.Lock()
+    next_request = 0.0
     raw_path = args.output.with_suffix('.jsonl')
 
     async def run(case, stage, repeat):
+        nonlocal next_request
         async with semaphore:
             prepare = old_speech if stage == 'before' else lesson_speech(50)
             memory = case['saved'].get('memory_context') if args.memory == 'recorded' else None
             row = {'case': case['name'], 'repeat': repeat, 'stage': stage, 'memory': args.memory,
                 'historical': case['historical'], 'model': args.model, 'baseline_revision': args.before_revision,
                 'mode': case['mode'], 'offline': args.offline}
+            if case['mode'] == 'AUTO':
+                row['max_output_tokens'] = args.auto_max_tokens
             row['memory_origin'] = case.get('memory_origin','saved_sample')
             row['had_memory'] = bool(memory)
+            if not args.offline:
+                async with request_lock:
+                    await asyncio.sleep(max(0, next_request-time.perf_counter()))
+                    next_request = time.perf_counter()+args.request_interval
             started = time.perf_counter()
             try:
                 if args.offline:
@@ -176,7 +185,7 @@ async def main(args):
                     row['prompt_sha256'] = hashlib.sha256(prompt.encode()).hexdigest()
                     generator_class = old_auto if stage == 'before' else OpenRouterCaptionGenerator
                     generator = generator_class(api_key=key, model_name=args.model, base_url=args.base_url,
-                        max_tokens=250, temperature=.1, timeout_seconds=120, prompt=prompt)
+                        max_tokens=args.auto_max_tokens, temperature=.1, timeout_seconds=120, prompt=prompt)
                     frame = Frame(frame_id=case['saved'].get('frame_id',0), image_bytes=case['image'], caption_mode=CaptionMode.AUTO)
                     chunks = [text async for text in generator.generate(frame, memory)]
                     row['raw'] = '\n'.join(chunks)
@@ -207,11 +216,19 @@ async def main(args):
                 # Nessun header, chiave o payload immagine nei messaggi d'errore.
                 row['error'] = type(error).__name__ + (f' HTTP {error.response.status_code}' if isinstance(error,httpx.HTTPStatusError) else '')
                 row['elapsed_ms'] = round((time.perf_counter()-started)*1000,1)
+                if isinstance(error, httpx.HTTPStatusError):
+                    row['retry_after'] = error.response.headers.get('retry-after')
+                    try:
+                        details = error.response.json().get('error', {})
+                        if isinstance(details, dict):
+                            row['error_message'] = str(details.get('message', '')).replace(key or '\x00', '[redacted]')[:400]
+                    except (ValueError, AttributeError):
+                        pass
             rows.append(row)
             with raw_path.open('a',encoding='utf-8') as target:
                 target.write(json.dumps(row,ensure_ascii=False)+'\n')
             markdown(rows, args.output)
-            print(f"{case['name']} {stage} #{repeat}: {row.get('vlm_ms','offline')} ms {row.get('error','OK')}",flush=True)
+            print(f"{case['name']} {stage} #{repeat}: {row.get('vlm_ms',row.get('elapsed_ms','offline'))} ms {row.get('error','OK')}",flush=True)
 
     # Una nuova esecuzione sostituisce il confronto, mai il dataset originale.
     raw_path.write_text('')
@@ -231,11 +248,17 @@ if __name__ == '__main__':
     parser.add_argument('--before-revision',default='63d9337')
     parser.add_argument('--repeat',type=int,default=1)
     parser.add_argument('--concurrency',type=int,default=2)
+    parser.add_argument('--auto-max-tokens',type=int,default=250,
+                        help='stesso budget di token AUTO per prima/dopo; deve coprire anche le etichette interne')
+    parser.add_argument('--request-interval',type=float,default=0,
+                        help='intervallo minimo fra richieste API in secondi; riduce i 429 senza alterare i tempi VLM misurati')
     parser.add_argument('--memory',choices=('none','recorded'),default='none')
     parser.add_argument('--output',type=Path,default=ROOT/'Docs/regressione_uici.md')
     parser.add_argument('--offline',action='store_true')
     parser.add_argument('--recompose-source',type=Path,help='riapplica solo il filtro vocale alle risposte JSONL già misurate')
     arguments=parser.parse_args()
-    if arguments.repeat < 1 or arguments.concurrency < 1:
-        parser.error('repeat e concurrency devono essere positivi')
+    if arguments.repeat < 1 or arguments.concurrency < 1 or arguments.auto_max_tokens < 1:
+        parser.error('repeat, concurrency e auto-max-tokens devono essere positivi')
+    if arguments.request_interval < 0:
+        parser.error('request-interval non può essere negativo')
     asyncio.run(main(arguments))
