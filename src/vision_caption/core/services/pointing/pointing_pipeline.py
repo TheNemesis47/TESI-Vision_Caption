@@ -185,8 +185,10 @@ class PointingPipeline:
         lesson_memory: LessonMemory | None = None,
         speech_text: Callable[[str], str] | None = None,
         diagnostics_enabled: bool = False,
+        recovery_pose_estimator: HandPoseEstimatorPort | None = None,
     ) -> None:
         self._hand_pose_estimator = hand_pose_estimator
+        self._recovery_pose_estimator = recovery_pose_estimator
         self._gesture_recognizer = gesture_recognizer
         self._event_gate = event_gate
         self._image_preparer = image_preparer
@@ -211,7 +213,27 @@ class PointingPipeline:
         ]
         | None = None,
     ) -> AsyncIterator[CaptionResult]:
+        pose_started_at = perf_counter()
         pose_result = await self._hand_pose_estimator.estimate(frame)
+        recovery_used = False
+        if self._recovery_pose_estimator is not None and not self._gesture_recognizer.has_pointing_pose(pose_result.hands):
+            recovery_error = None
+            try:
+                recovered = await self._recovery_pose_estimator.estimate(frame)
+            except Exception as error:
+                recovered = None
+                recovery_error = type(error).__name__
+                logger.warning("Recupero della mano non disponibile sul frame {}: {}", frame.frame_id, recovery_error)
+            recovery_used = recovered is not None and self._gesture_recognizer.has_pointing_pose(recovered.hands)
+            self._research.record(
+                "pointing_recovery", frame_id=frame.frame_id,
+                primary_hands=len(pose_result.hands), recovery_hands=len(recovered.hands) if recovered else 0,
+                selected="mirror" if recovery_used else "primary",
+                error_type=recovery_error,
+            )
+            if recovery_used:
+                pose_result = recovered
+        pose_ms = round((perf_counter()-pose_started_at)*1000, 1)
         timestamp = self._clock()
         recognition = self._gesture_recognizer.update(
             pose_result.hands,
@@ -227,6 +249,8 @@ class PointingPipeline:
                 ),
                 reason="no_hand" if not pose_result.hands else "hands_observed",
                 hands=list(recognition.diagnostics),
+                recovery_used=recovery_used,
+                pose_ms=pose_ms,
             )
         self._previous_pose_timestamp = timestamp
         if on_overlay is not None:
@@ -260,6 +284,8 @@ class PointingPipeline:
             handedness=activation.handedness.value,
             retarget=activation.retarget,
             ray=activation.ray.model_dump(mode="json"),
+            recovery_used=recovery_used,
+            pose_ms=pose_ms,
         )
 
         event = PointingEvent(
@@ -365,3 +391,5 @@ class PointingPipeline:
 
     async def close(self) -> None:
         await self._hand_pose_estimator.close()
+        if self._recovery_pose_estimator is not None and self._recovery_pose_estimator is not self._hand_pose_estimator:
+            await self._recovery_pose_estimator.close()

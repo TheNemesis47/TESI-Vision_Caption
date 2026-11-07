@@ -73,3 +73,23 @@ async def test_estimator_is_lazy_and_rejects_use_after_close(tmp_path) -> None:
                 caption_mode=CaptionMode.POINTING,
             )
         )
+
+
+def test_unmirror_restores_coordinates_and_handedness():
+    from vision_caption.adapters.hand_tracking.mediapipe_hand_pose_estimator import unmirror_pose
+    result=SimpleNamespace(
+        hand_landmarks=[[_landmark(i) for i in range(21)]],
+        hand_world_landmarks=[[_landmark(i) for i in range(21)]],
+        handedness=[[SimpleNamespace(category_name='Right',score=.97)]],
+    )
+    mirrored=convert_mediapipe_result(result,frame_id=42)
+    original=unmirror_pose(mirrored)
+    assert original.hands[0].handedness==Handedness.LEFT
+    assert original.hands[0].image_landmarks[8].x==pytest.approx(.92)
+    assert original.hands[0].image_landmarks[8].y==mirrored.hands[0].image_landmarks[8].y
+    assert original.hands[0].world_landmarks[8].x==-mirrored.hands[0].world_landmarks[8].x
+    restored=unmirror_pose(original)
+    assert restored.hands[0].handedness==mirrored.hands[0].handedness
+    for actual,expected in zip(restored.hands[0].image_landmarks,mirrored.hands[0].image_landmarks,strict=True):
+        assert actual.x==pytest.approx(expected.x)
+        assert actual.y==expected.y and actual.z==expected.z

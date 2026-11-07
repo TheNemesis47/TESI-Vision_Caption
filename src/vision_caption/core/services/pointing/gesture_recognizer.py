@@ -399,6 +399,26 @@ class PointingGestureRecognizer:
         self._settings = settings or GestureRecognizerSettings()
         self._trackers: dict[str, _GestureTracker] = {}
 
+    def has_pointing_pose(self, hands: tuple[HandObservation, ...]) -> bool:
+        """Precontrollo senza mutare EMA o conferma, per il recupero visivo.
+
+        Usa le soglie di mantenimento per una mano già attiva: un dito
+        leggermente piegato durante il gesto non deve cambiare estimatore.
+        """
+        for index, hand in enumerate(hands):
+            tracker = self._trackers.get(str(index))
+            vector = calculate_pointing_vector(
+                hand.image_landmarks, min_length=self._settings.min_pointing_vector_length,
+            )
+            if vector is not None and project_vector_to_frame(vector) is not None and is_pointing_pose(
+                calculate_finger_angles(hand.world_landmarks),
+                calculate_thumb_palm_ratio(hand.world_landmarks),
+                active=tracker.active if tracker else False,
+                settings=self._settings,
+            ):
+                return True
+        return False
+
     def update(
         self,
         hands: tuple[HandObservation, ...],

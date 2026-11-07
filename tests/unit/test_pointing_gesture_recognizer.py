@@ -384,3 +384,12 @@ def test_real_sample_angles_keep_their_measured_classification(extensions,thumb,
     angles={name:FingerAngles(pip=value,dip=value) for name,value in zip(
         ('INDICE','MEDIO','ANULARE','MIGNOLO'),extensions,strict=True)}
     assert is_pointing_pose(angles,thumb,active=False,settings=GestureRecognizerSettings()) is expected
+
+
+def test_pose_preflight_does_not_advance_confirmation():
+    recognizer=PointingGestureRecognizer()
+    hand=_pointing_hand()
+    assert recognizer.has_pointing_pose((hand,))
+    assert not recognizer.has_pointing_pose(())
+    assert recognizer.update((hand,),timestamp=0.0).activations==()
+    assert len(recognizer.update((hand,),timestamp=.21).activations)==1

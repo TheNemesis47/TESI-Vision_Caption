@@ -52,3 +52,13 @@ def test_pointing_diagnostics_and_gap_reach_the_pipeline() -> None:
     pipeline = create_app(settings).state.pipeline_factory(None)._pointing_pipeline
     assert pipeline._diagnostics_enabled
     assert pipeline._gesture_recognizer._settings.candidate_gap_seconds == 0.4
+
+
+def test_mirror_recovery_has_a_separate_estimator_and_does_not_change_auto():
+    settings=AppSettings.from_env({'USE_MOCKS':'true','RESEARCH_LOG_ENABLED':'false','POINTING_MIRROR_RECOVERY':'true'})
+    pipeline=create_app(settings).state.pipeline_factory(None)
+    pointing=pipeline._pointing_pipeline
+    assert pointing._recovery_pose_estimator is not None
+    assert pointing._recovery_pose_estimator is not pipeline._hand_pose_estimator
+    assert pointing._hand_pose_estimator is pipeline._hand_pose_estimator
+    assert _pipeline('lesson')._pointing_pipeline._recovery_pose_estimator is None

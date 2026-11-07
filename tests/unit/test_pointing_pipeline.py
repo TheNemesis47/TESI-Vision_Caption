@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -195,6 +195,7 @@ async def test_optional_diagnostics_record_a_frame_without_a_hand() -> None:
     assert [r async for r in pipeline.process(_frame())] == []
     recorder.record.assert_called_once_with(
         "pointing_frame", frame_id=5, interval_ms=None, reason="no_hand", hands=[],
+        recovery_used=False, pose_ms=ANY,
     )
 
 
@@ -488,3 +489,36 @@ def test_pointed_picture_keeps_even_a_short_description_after_its_text() -> None
         description="Cabina arcade viola", visible_text="Sala prove", text_complete=True,
     )
     assert compose_lesson_caption(caption) == "Sala prove. Cabina arcade viola"
+
+
+class PreflightRecognizer(StubRecognizer):
+    def has_pointing_pose(self,hands):
+        return bool(hands)
+
+
+class PoseEstimator(FakeEstimator):
+    def __init__(self,hands):
+        super().__init__()
+        self.hands=hands
+    async def estimate(self,frame):
+        self.calls+=1
+        return HandPoseResult(frame_id=frame.frame_id,hands=self.hands)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('primary_hands','recovery_hands','expected_recovery_calls'),[
+    ((),True,1), (True,True,0), ((),(),1),
+])
+async def test_mirror_recovery_is_only_used_when_primary_pose_is_missing(primary_hands,recovery_hands,expected_recovery_calls):
+    hand=_hand_observation()
+    primary=PoseEstimator((hand,) if primary_hands else ())
+    recovery=PoseEstimator((hand,) if recovery_hands else ())
+    recorder=Mock()
+    pipeline=PointingPipeline(primary,PreflightRecognizer(()),PointingEventGate(),FakePreparer(),FakeGenerator(None),FakeSpeech(),research_recorder=recorder,recovery_pose_estimator=recovery)
+    assert [r async for r in pipeline.process(_frame())]==[]
+    assert recovery.calls==expected_recovery_calls
+    if expected_recovery_calls:
+        expected='mirror' if recovery_hands else 'primary'
+        assert recorder.record.call_args.kwargs['selected']==expected
+    await pipeline.close()
+    assert primary.closed and recovery.closed

@@ -313,6 +313,7 @@ class PointingDebugSettings(SettingsModel):
 
 
 class PointingSettings(SettingsModel):
+    mirror_recovery_enabled: bool = False
     media_pipe: MediaPipeSettings = Field(default_factory=MediaPipeSettings)
     gesture: PointingGestureSettings = Field(default_factory=PointingGestureSettings)
     corridor: PointingCorridorSettings = Field(
@@ -498,6 +499,7 @@ class AppSettings(SettingsModel):
                 lesson_stop_hold_seconds=value("LESSON_STOP_HOLD_SECONDS", 0.4),
             ),
             pointing=PointingSettings(
+                mirror_recovery_enabled=value("POINTING_MIRROR_RECOVERY", False),
                 media_pipe=MediaPipeSettings(
                     model_path=value(
                         "HAND_LANDMARKER_MODEL_PATH",

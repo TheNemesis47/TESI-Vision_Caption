@@ -1,4 +1,5 @@
 from datetime import datetime
+from dataclasses import replace
 from fastapi import FastAPI
 from loguru import logger
 from vision_caption.infrastructure.settings import AppSettings
@@ -413,6 +414,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             lesson_memory=lesson_memory,
             speech_text=speech_text,
             diagnostics_enabled=settings.pointing.debug.gesture_diagnostics,
+            recovery_pose_estimator=(
+                MockHandPoseEstimator() if use_mocks else MediaPipeHandPoseEstimator(
+                    settings=replace(media_pipe_settings, mirror_input=True, static_image_mode=True)
+                )
+            ) if settings.pointing.mirror_recovery_enabled else None,
         )
         return CaptionPipeline(
             scene_detector=scene_detector,

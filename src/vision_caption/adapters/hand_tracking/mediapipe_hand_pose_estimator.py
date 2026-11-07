@@ -49,6 +49,8 @@ class MediaPipeHandPoseSettings:
     min_hand_detection_confidence: float = 0.60
     min_hand_presence_confidence: float = 0.60
     min_tracking_confidence: float = 0.60
+    mirror_input: bool = False
+    static_image_mode: bool = False
 
     def __post_init__(self) -> None:
         if self.inference_max_side < 0:
@@ -135,6 +137,18 @@ def convert_mediapipe_result(
     return HandPoseResult(frame_id=frame_id, hands=tuple(observations))
 
 
+def unmirror_pose(pose: HandPoseResult) -> HandPoseResult:
+    """Riporta nel frame originale una stima ottenuta sull'immagine specchiata."""
+    opposite = {Handedness.LEFT: Handedness.RIGHT, Handedness.RIGHT: Handedness.LEFT}
+    return pose.model_copy(update={"hands": tuple(
+        hand.model_copy(update={
+            "handedness": opposite.get(hand.handedness, Handedness.UNKNOWN),
+            "image_landmarks": tuple(point.model_copy(update={"x": 1.0-point.x}) for point in hand.image_landmarks),
+            "world_landmarks": tuple(point.model_copy(update={"x": -point.x}) for point in hand.world_landmarks),
+        }) for hand in pose.hands
+    )})
+
+
 class MediaPipeHandPoseEstimator(HandPoseEstimatorPort):
     """Landmarker VIDEO creato soltanto al primo frame POINTING."""
 
@@ -161,16 +175,22 @@ class MediaPipeHandPoseEstimator(HandPoseEstimatorPort):
             raise ValueError("Il frame POINTING non contiene un JPEG valido")
 
         processing_frame = self._resize_for_inference(bgr_frame)
+        if self._settings.mirror_input:
+            processing_frame = cv2.flip(processing_frame, 1)
         rgb_frame = cv2.cvtColor(processing_frame, cv2.COLOR_BGR2RGB)
         mediapipe_image = self._mediapipe.Image(
             image_format=self._mediapipe.ImageFormat.SRGB,
             data=rgb_frame,
         )
 
-        timestamp_ms = next_video_timestamp_ms(self._previous_timestamp_ms)
-        self._previous_timestamp_ms = timestamp_ms
-        result = landmarker.detect_for_video(mediapipe_image, timestamp_ms)
-        return convert_mediapipe_result(result, frame_id=frame.frame_id)
+        if self._settings.static_image_mode:
+            result = landmarker.detect(mediapipe_image)
+        else:
+            timestamp_ms = next_video_timestamp_ms(self._previous_timestamp_ms)
+            self._previous_timestamp_ms = timestamp_ms
+            result = landmarker.detect_for_video(mediapipe_image, timestamp_ms)
+        pose = convert_mediapipe_result(result, frame_id=frame.frame_id)
+        return unmirror_pose(pose) if self._settings.mirror_input else pose
 
     def _resize_for_inference(self, frame: np.ndarray) -> np.ndarray:
         frame_height, frame_width = frame.shape[:2]
@@ -215,7 +235,7 @@ class MediaPipeHandPoseEstimator(HandPoseEstimatorPort):
         )
         options = vision.HandLandmarkerOptions(
             base_options=base_options,
-            running_mode=vision.RunningMode.VIDEO,
+            running_mode=vision.RunningMode.IMAGE if self._settings.static_image_mode else vision.RunningMode.VIDEO,
             num_hands=self._settings.num_hands,
             min_hand_detection_confidence=(
                 self._settings.min_hand_detection_confidence

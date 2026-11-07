@@ -459,3 +459,25 @@ I tempi sono richieste VLM, non audio sul telefono. Le ripetizioni sulla stessa
 immagine non costituiscono una valutazione su utenti o ambienti indipendenti.
 `--recompose-source percorso.jsonl` riapplica solo il filtro vocale corrente
 alle risposte già misurate, senza chiamare il modello.
+
+### Recupero opzionale della mano in POINTING
+
+`POINTING_MIRROR_RECOVERY=true` abilita una seconda stima soltanto quando la
+posa normale non supera il precontrollo. L'immagine specchiata viene stimata
+in modalità IMAGE, per evitare che il tracking VIDEO perda nuovamente
+l'indice dopo il primo frame. Coordinate e lateralità tornano nel frame
+originale prima del riconoscitore. Soglie angolari, conferma, cooldown e
+stimatore del gesto di stop in AUTO restano gli stessi.
+
+Il default è `false`: la seconda stima richiede ulteriore calcolo e va provata
+dal vivo. Nel replay statico dei sette sample POINTING disponibili il
+recupero porta i casi con attivazione da 4 a 6, includendo il frame 799 della
+prof e il frame 8 della sessione `dbb46cf33e38`; il 42 sfocato resta senza
+mano. Nessuna attivazione nei quattro controlli selezionati senza gesto.
+Non è una misura del recupero dei tentativi storici non registrati: il
+benchmark mantiene ogni JPEG per cinque osservazioni simulate a 0,21 s.
+
+```bash
+uv run python scripts/benchmark_pointing_recovery.py \
+  --model models/hand_tracking/hand_landmarker.task
+```
