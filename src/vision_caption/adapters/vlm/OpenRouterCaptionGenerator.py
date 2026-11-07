@@ -105,7 +105,8 @@ class OpenRouterCaptionGenerator(CaptionGeneratorPort):
                         {
                             "type": "text",
                             "text": (
-                                f"{self._prompt}\n\n{context}"
+                                f"MEMORIA STORICA (non è evidenza visiva):\n{context}\n\n"
+                                f"ISTRUZIONI PER L'IMMAGINE CORRENTE:\n{self._prompt}"
                                 if context
                                 else self._prompt
                             ),
