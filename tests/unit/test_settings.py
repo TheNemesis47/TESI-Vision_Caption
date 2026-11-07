@@ -70,6 +70,19 @@ def test_invalid_settings_fail_during_startup() -> None:
         AppSettings.from_env({"SSIM_THRESHOLD": "2.0"})
 
 
+def test_pointing_tolerance_is_opt_in() -> None:
+    defaults = AppSettings.from_env({})
+    assert defaults.pointing.gesture.candidate_gap_seconds is None
+    assert not defaults.pointing.debug.gesture_diagnostics
+    configured = AppSettings.from_env({
+        "POINTING_CANDIDATE_GAP_SECONDS": "0.4", "POINTING_GESTURE_DIAGNOSTICS": "true",
+    })
+    assert configured.pointing.gesture.candidate_gap_seconds == 0.4
+    assert configured.pointing.debug.gesture_diagnostics
+    with pytest.raises(ValidationError):
+        AppSettings.from_env({"POINTING_CANDIDATE_GAP_SECONDS": "-0.1"})
+
+
 def test_senza_chiavi_si_va_sui_servizi_locali() -> None:
     settings = AppSettings.from_env({})
 

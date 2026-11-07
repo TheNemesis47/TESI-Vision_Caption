@@ -169,6 +169,7 @@ class PointingPipeline:
         sample_store: CaptionSampleStorePort | None = None,
         lesson_memory: LessonMemory | None = None,
         speech_text: Callable[[str], str] | None = None,
+        diagnostics_enabled: bool = False,
     ) -> None:
         self._hand_pose_estimator = hand_pose_estimator
         self._gesture_recognizer = gesture_recognizer
@@ -183,6 +184,8 @@ class PointingPipeline:
         # regole della lezione (breve, simboli letti a parole).
         self._lesson_memory = lesson_memory
         self._speech_text = speech_text
+        self._diagnostics_enabled = diagnostics_enabled
+        self._previous_pose_timestamp: float | None = None
 
     async def process(
         self,
@@ -199,6 +202,18 @@ class PointingPipeline:
             pose_result.hands,
             timestamp=timestamp,
         )
+        if self._diagnostics_enabled:
+            self._research.record(
+                "pointing_frame",
+                frame_id=frame.frame_id,
+                interval_ms=(
+                    round((timestamp - self._previous_pose_timestamp) * 1000, 1)
+                    if self._previous_pose_timestamp is not None else None
+                ),
+                reason="no_hand" if not pose_result.hands else "hands_observed",
+                hands=list(recognition.diagnostics),
+            )
+        self._previous_pose_timestamp = timestamp
         if on_overlay is not None:
             await on_overlay(
                 recognition.overlays,
@@ -331,6 +346,7 @@ class PointingPipeline:
     def reset(self) -> None:
         self._gesture_recognizer.reset()
         self._event_gate.reset()
+        self._previous_pose_timestamp = None
 
     async def close(self) -> None:
         await self._hand_pose_estimator.close()

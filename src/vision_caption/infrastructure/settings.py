@@ -247,6 +247,7 @@ class PointingGestureSettings(SettingsModel):
     ray_ema_alpha: float = Field(default=0.25, gt=0.0, le=1.0)
     confirmation_seconds: float = Field(default=0.15, ge=0.0)
     release_seconds: float = Field(default=5.0 / 30.0, ge=0.0)
+    candidate_gap_seconds: float | None = Field(default=None, ge=0.0)
     min_pointing_vector_length: float = Field(default=0.0125, ge=0.0)
     event_cooldown_seconds: float = Field(default=2.0, ge=0.0)
     retarget_enabled: bool = True
@@ -306,6 +307,7 @@ class PointingVlmSettings(SettingsModel):
 
 
 class PointingDebugSettings(SettingsModel):
+    gesture_diagnostics: bool = False
     save_prepared_images: bool = False
     output_dir: Path = Path("artifacts/pointing_debug")
 
@@ -551,6 +553,7 @@ class AppSettings(SettingsModel):
                         "POINTING_RELEASE_SECONDS",
                         5.0 / 30.0,
                     ),
+                    candidate_gap_seconds=value("POINTING_CANDIDATE_GAP_SECONDS", None),
                     min_pointing_vector_length=value(
                         "POINTING_MIN_VECTOR_LENGTH",
                         0.0125,
@@ -627,6 +630,7 @@ class AppSettings(SettingsModel):
                     temperature=value("POINTING_VLM_TEMPERATURE", 0.1),
                 ),
                 debug=PointingDebugSettings(
+                    gesture_diagnostics=value("POINTING_GESTURE_DIAGNOSTICS", False),
                     save_prepared_images=value(
                         "POINTING_DEBUG_SAVE_IMAGES",
                         False,

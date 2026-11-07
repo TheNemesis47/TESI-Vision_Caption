@@ -42,3 +42,13 @@ def test_each_connection_gets_its_own_memory() -> None:
 def test_stop_gesture_is_active_only_in_lesson_mode() -> None:
     assert _pipeline("lesson")._stop_gesture is not None
     assert _pipeline("general")._stop_gesture is None
+
+
+def test_pointing_diagnostics_and_gap_reach_the_pipeline() -> None:
+    settings = AppSettings.from_env({
+        "USE_MOCKS": "true", "RESEARCH_LOG_ENABLED": "false",
+        "POINTING_CANDIDATE_GAP_SECONDS": "0.4", "POINTING_GESTURE_DIAGNOSTICS": "true",
+    })
+    pipeline = create_app(settings).state.pipeline_factory(None)._pointing_pipeline
+    assert pipeline._diagnostics_enabled
+    assert pipeline._gesture_recognizer._settings.candidate_gap_seconds == 0.4

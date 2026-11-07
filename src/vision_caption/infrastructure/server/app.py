@@ -340,6 +340,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ray_ema_alpha=settings.pointing.gesture.ray_ema_alpha,
         confirmation_seconds=settings.pointing.gesture.confirmation_seconds,
         release_seconds=settings.pointing.gesture.release_seconds,
+        candidate_gap_seconds=settings.pointing.gesture.candidate_gap_seconds,
         min_pointing_vector_length=(
             settings.pointing.gesture.min_pointing_vector_length
         ),
@@ -411,6 +412,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             sample_store=sample_store,
             lesson_memory=lesson_memory,
             speech_text=speech_text,
+            diagnostics_enabled=settings.pointing.debug.gesture_diagnostics,
         )
         return CaptionPipeline(
             scene_detector=scene_detector,

@@ -266,6 +266,20 @@ Variabili principali:
 - `POINTING_VLM_TIMEOUT_SECONDS` — timeout della richiesta VLM dedicata;
 - `POINTING_VLM_MAX_OUTPUT_TOKENS` — limite della risposta JSON.
 
+Per analizzare i tentativi non riconosciuti, abilitare
+`POINTING_GESTURE_DIAGNOSTICS=true` insieme al log di ricerca. Gli eventi
+`pointing_frame` riportano intervallo fra frame, mano assente (`no_hand`),
+angoli grezzi e filtrati, rapporto pollice/palmo, raggio e ragione del rifiuto
+(`index_bent`, `other_fingers_extended`, `thumb_far`, `invalid_ray`). Non
+richiede `LOG_LEVEL=DEBUG` e non registra immagini aggiuntive.
+
+`POINTING_CANDIDATE_GAP_SECONDS` è opzionale: senza valore mantiene la
+tolleranza di `POINTING_RELEASE_SECONDS`. Nella sessione UICI il flusso
+effettivo era circa 4,7 fps (0,21 s/frame); provare `0.4` tollera interruzioni
+più lunghe nella conferma. Può anche unire pose distinte: resta disabilitato
+per default in attesa di verifica dal vivo. Angoli, cooldown, rilascio del
+gesto attivo e comportamento AUTO restano invariati.
+
 Per acquisire materiale diagnostico o figure per la tesi è possibile abilitare:
 
 ```env

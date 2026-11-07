@@ -73,6 +73,7 @@ class GestureRecognizerSettings:
     ray_ema_alpha: float = 0.25
     confirmation_seconds: float = 0.15
     release_seconds: float = 5.0 / 30.0
+    candidate_gap_seconds: float | None = None
     min_pointing_vector_length: float = 0.0125
     retarget_enabled: bool = True
     retarget_min_angle_deg: float = 20.0
@@ -87,6 +88,8 @@ class GestureRecognizerSettings:
             raise ValueError("ray_ema_alpha deve essere compreso fra 0 e 1")
         if self.confirmation_seconds < 0.0 or self.release_seconds < 0.0:
             raise ValueError("Le soglie temporali non possono essere negative")
+        if self.candidate_gap_seconds is not None and self.candidate_gap_seconds < 0:
+            raise ValueError("candidate_gap_seconds non può essere negativo")
         if self.min_pointing_vector_length < 0.0:
             raise ValueError("La lunghezza minima del vettore non può essere negativa")
         if (
@@ -111,6 +114,7 @@ class PointingActivation:
 class PointingRecognitionResult:
     activations: tuple[PointingActivation, ...] = ()
     overlays: tuple[PointingOverlay, ...] = ()
+    diagnostics: tuple[dict, ...] = ()
 
 
 def is_pointing_pose(
@@ -121,9 +125,21 @@ def is_pointing_pose(
     settings: GestureRecognizerSettings,
 ) -> bool:
     """Classifica la posa usando isteresi fra attivazione e mantenimento."""
+    return pose_rejection_reason(
+        angles, thumb_palm_ratio, active=active, settings=settings
+    ) is None
+
+
+def pose_rejection_reason(
+    angles: dict[str, FingerAngles],
+    thumb_palm_ratio: float,
+    *,
+    active: bool,
+    settings: GestureRecognizerSettings,
+) -> str | None:
     required_fingers = {"INDICE", *OTHER_FINGERS}
     if not required_fingers.issubset(angles):
-        return False
+        return "missing_angles"
 
     if active:
         index_min_angle = settings.index_hold_min_angle_deg
@@ -140,7 +156,13 @@ def is_pointing_pose(
         for finger_name in OTHER_FINGERS
     )
     thumb_is_near_palm = thumb_palm_ratio <= thumb_max_ratio
-    return index_is_extended and other_fingers_are_folded and thumb_is_near_palm
+    if not index_is_extended:
+        return "index_bent"
+    if not other_fingers_are_folded:
+        return "other_fingers_extended"
+    if not thumb_is_near_palm:
+        return "thumb_far"
+    return None
 
 
 @dataclass
@@ -343,7 +365,10 @@ class _GestureTracker:
             return
         if self.candidate_miss_since is None:
             self.candidate_miss_since = timestamp
-        if timestamp - self.candidate_miss_since >= self.settings.release_seconds:
+        gap = self.settings.candidate_gap_seconds
+        if gap is None:
+            gap = self.settings.release_seconds
+        if timestamp - self.candidate_miss_since >= gap:
             self.candidate_since = None
             self.candidate_miss_since = None
 
@@ -382,6 +407,7 @@ class PointingGestureRecognizer:
     ) -> PointingRecognitionResult:
         activations: list[PointingActivation] = []
         overlays: list[PointingOverlay] = []
+        diagnostics: list[dict] = []
         seen_trackers: set[str] = set()
 
         for hand_index, hand in enumerate(hands):
@@ -396,9 +422,8 @@ class PointingGestureRecognizer:
             )
             tracker.advance(timestamp)
 
-            angles = tracker.smooth_angles(
-                calculate_finger_angles(hand.world_landmarks)
-            )
+            raw_angles = calculate_finger_angles(hand.world_landmarks)
+            angles = tracker.smooth_angles(raw_angles)
             thumb_ratio = tracker.smooth_thumb_palm_ratio(
                 calculate_thumb_palm_ratio(hand.world_landmarks)
             )
@@ -411,15 +436,15 @@ class PointingGestureRecognizer:
             if raw_vector is not None:
                 ray = project_vector_to_frame(tracker.smooth_vector(raw_vector))
 
-            pose_matches = (
-                ray is not None
-                and is_pointing_pose(
+            rejection = (
+                "invalid_ray" if ray is None else pose_rejection_reason(
                     angles,
                     thumb_ratio,
                     active=tracker.active,
                     settings=self._settings,
                 )
             )
+            pose_matches = rejection is None
             logger.debug(
                 "POINTING posa: indice={:.0f} medio={:.0f} anulare={:.0f} "
                 "mignolo={:.0f} pollice={:.2f} raggio={} attiva={} valida={}",
@@ -433,6 +458,18 @@ class PointingGestureRecognizer:
                 pose_matches,
             )
             just_activated = tracker.update_activation(pose_matches, timestamp)
+            diagnostics.append({
+                "tracker_key": tracker_key,
+                "handedness": hand.handedness.value,
+                "confidence": hand.confidence,
+                "raw_angles": {name: round(value.extension, 2) for name, value in raw_angles.items()},
+                "angles": {name: round(value.extension, 2) for name, value in angles.items()},
+                "thumb_palm_ratio": round(thumb_ratio, 4) if isfinite(thumb_ratio) else None,
+                "ray": ray.model_dump(mode="json") if ray else None,
+                "active": tracker.active,
+                "reason": rejection or ("activated" if just_activated else "held" if tracker.active else "confirming"),
+                "confirmation_progress": tracker.confirmation_progress(timestamp),
+            })
             if just_activated and ray is not None:
                 activations.append(
                     PointingActivation(
@@ -467,6 +504,7 @@ class PointingGestureRecognizer:
         return PointingRecognitionResult(
             activations=tuple(activations),
             overlays=tuple(overlays),
+            diagnostics=tuple(diagnostics),
         )
 
     def cancel(self, activation: PointingActivation) -> None:

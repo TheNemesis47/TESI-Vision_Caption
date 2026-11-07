@@ -265,6 +265,31 @@ def _retarget_settings() -> GestureRecognizerSettings:
     )
 
 
+def test_optional_candidate_gap_tolerates_two_missed_frames_at_prof_cadence() -> None:
+    # Circa 4,7 fps osservati nella sessione: intervallo ~0,21 s.
+    hand = _pointing_hand()
+    strict = PointingGestureRecognizer(GestureRecognizerSettings())
+    tolerant = PointingGestureRecognizer(GestureRecognizerSettings(candidate_gap_seconds=0.4))
+    for recognizer in (strict, tolerant):
+        recognizer.update((hand,), timestamp=0.0)
+        recognizer.update((), timestamp=0.21)
+        recognizer.update((), timestamp=0.42)
+    assert strict.update((hand,), timestamp=0.63).activations == ()
+    assert len(tolerant.update((hand,), timestamp=0.63).activations) == 1
+
+
+def test_diagnostics_distinguish_pose_and_ray_rejections() -> None:
+    recognizer = PointingGestureRecognizer()
+    hand = _pointing_hand()
+    candidate = recognizer.update((hand,), timestamp=0.0)
+    assert candidate.diagnostics[0]["reason"] == "confirming"
+    assert candidate.diagnostics[0]["angles"]["INDICE"] == 180.0
+    assert candidate.diagnostics[0]["raw_angles"]["INDICE"] == 180.0
+    assert candidate.diagnostics[0]["handedness"] == "RIGHT"
+    invalid = _aimed(hand, 0.35, 0.5)
+    assert PointingGestureRecognizer().update((invalid,), timestamp=0.0).diagnostics[0]["reason"] == "invalid_ray"
+
+
 def test_moving_held_finger_to_new_target_activates_again() -> None:
     recognizer = PointingGestureRecognizer(_retarget_settings())
     first_target = _pointing_hand()

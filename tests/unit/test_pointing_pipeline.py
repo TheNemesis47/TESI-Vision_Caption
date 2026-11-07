@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from unittest.mock import Mock
 
 import pytest
 
@@ -181,6 +182,20 @@ async def test_no_activation_stops_before_images_vlm_and_tts() -> None:
     assert preparer.calls == 0
     assert generator.calls == 0
     assert speech.calls == []
+
+
+@pytest.mark.asyncio
+async def test_optional_diagnostics_record_a_frame_without_a_hand() -> None:
+    recorder = Mock()
+    pipeline = PointingPipeline(
+        FakeEstimator(), StubRecognizer(()), PointingEventGate(), FakePreparer(),
+        FakeGenerator(None), FakeSpeech(), clock=lambda: 10.0,
+        research_recorder=recorder, diagnostics_enabled=True,
+    )
+    assert [r async for r in pipeline.process(_frame())] == []
+    recorder.record.assert_called_once_with(
+        "pointing_frame", frame_id=5, interval_ms=None, reason="no_hand", hands=[],
+    )
 
 
 @pytest.mark.asyncio
