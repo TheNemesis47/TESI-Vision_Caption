@@ -116,6 +116,10 @@ def compose_lesson_caption(caption: PointingCaption) -> str | None:
         if line.strip()
     ]
     visible_text = ", ".join(lines)
+    if visible_text and not caption.text_complete and description:
+        # Il frame 799 aveva OCR "deogioco" dal titolo tagliato: si conserva
+        # la descrizione del bersaglio senza leggere parole incomplete.
+        return description
     readable = (
         visible_text
         and len(lines) <= LESSON_MAX_VISIBLE_LINES

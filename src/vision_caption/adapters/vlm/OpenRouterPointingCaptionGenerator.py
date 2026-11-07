@@ -47,13 +47,26 @@ sono leggibili o già descritti nella memoria. Se nessun bersaglio è
 identificabile, usa target=null, description="", needs_repointing=true.
 Ignora la mano e il corpo della
 persona che punta. Non inventare dettagli e non inferire attributi personali.
+Non elencare assenze come "senza bottoni". Per comandi piccoli non
+distinguibili usa "controlli", senza indovinare joystick o manopole.
 Se il bersaglio è una persona, usa soltanto il termine neutro "persona".
 {pointing_context(context)}
 Usa il CONTESTO per riconoscere la scena, il FOCUS per verificare
 l'allineamento e l'immagine PULITA per trascrivere esclusivamente il testo che
 appartiene al bersaglio. Non tradurre né completare testo incerto. Se non c'è
-testo leggibile usa null. Se due oggetti sono indistinguibili, usa confidence
+testo leggibile e completo usa null. Non includere frammenti del titolo
+che non appartengono al bersaglio. Se due oggetti sono indistinguibili, usa confidence
 bassa, inseriscili nelle alternatives e imposta needs_repointing=true.
+
+VERIFICA GEOMETRICA PRIMA DI RISPONDERE:
+- La punta è all'origine numerica indicata sopra, non sul testo più evidente.
+- Se la punta si sovrappone già a un oggetto o a una figura, considera quel
+  bersaglio per primo. Una figura toccata dalla punta ha precedenza sul
+  titolo della slide distante dalla punta.
+- Un bersaglio interamente dietro l'origine, nel verso opposto al raggio,
+  non è indicato. Non leggere titoli o parole esterni al corridoio.
+- L'immagine PULITA serve a descrivere il bersaglio selezionato, non a
+  sostituirlo con un altro più leggibile. In dubbio chiedi di ripuntare.
 
 Rispondi esclusivamente con un oggetto JSON nel formato:
 {{

@@ -471,3 +471,11 @@ def test_lesson_pointing_reads_content_without_the_generic_slide_wrapper() -> No
     assert compose_lesson_caption(caption) == "Un visore pesa, circa 500 grammi"
 
 
+
+def test_lesson_pointing_does_not_read_incomplete_text_from_outside_the_picture() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+    caption = _lesson_caption(
+        target="cabina arcade", description="immagine di una cabina arcade viola",
+        visible_text="deogioco", text_complete=False, target_kind="educational_content",
+    )
+    assert compose_lesson_caption(caption) == "immagine di una cabina arcade viola"
