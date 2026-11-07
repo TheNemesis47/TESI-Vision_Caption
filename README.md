@@ -415,8 +415,24 @@ uv run python scripts/benchmark_elevenlabs.py --repeat 3
 Il confronto locale UICI ha dato mediane di 504,5 ms per l'MP3 completo con
 Turbo v2.5, 520,2 ms con Flash v2.5 e 955,5 ms con v4 Turbo; il primo chunk v4
 arrivava in mediana a 240,5 ms. Sono nove chiamate per modello, stesso client,
-voce e tre testi italiani. Il passaggio automatico a v4 non è quindi indicato
-come ottimizzazione della latenza con l'attuale riproduzione bufferizzata.
+voce e tre testi italiani. Questi tempi del clip completo non confrontano
+la rapidità del primo audio dei tre modelli.
+
+Il confronto streaming, con stessi testi italiani, voce e PCM a 24 kHz,
+misura separatamente apertura della connessione, primo chunk e fine audio:
+
+```bash
+uv run python scripts/benchmark_elevenlabs_streaming.py --repeat 3
+```
+
+Escludendo il warm-up, nove richieste per modello hanno dato mediane del primo
+chunk di **118,8 ms con v4 Turbo**, 246,5 ms con Flash v2.5 e 335,3 ms con
+Turbo v2.5, dopo l'apertura del WebSocket. Includendo l'apertura, v4 ha dato
+261,3 ms. Sono misure dal Mac che includono la rete, non la latenza lato server
+pubblicata dal provider né l'inizio della riproduzione sul telefono. V4 risulta
+più rapido sul primo chunk in questa prova; la qualità della voce richiede
+anche un confronto d'ascolto. Il clip v4 completo arriva in mediana a 838,2 ms
+dopo l'apertura: l'attuale riproduzione bufferizzata perde il vantaggio iniziale.
 Per sfruttare lo streaming fino al telefono occorre estendere anche il
 contratto audio e il client; questa modifica resta separata dai fix UICI.
 
