@@ -138,6 +138,11 @@ def compose_lesson_caption(caption: PointingCaption) -> str | None:
     # Evaporazione".
     if not description or visible_text.casefold() in description.casefold():
         return description or visible_text
+    if caption.target_kind == "educational_content":
+        # Anche una figura descritta in tre parole è informativa. Non usare
+        # la vecchia euristica delle etichette per scartarla; testo prima.
+        separator = " " if visible_text.endswith((".", "!", "?", ":")) else ". "
+        return f"{visible_text}{separator}{description}"
     if len(description.split()) <= 3 or description.casefold() == target.casefold():
         return visible_text
     separator = " " if description.endswith((".", "!", "?", ":")) else ". "

@@ -479,3 +479,12 @@ def test_lesson_pointing_does_not_read_incomplete_text_from_outside_the_picture(
         visible_text="deogioco", text_complete=False, target_kind="educational_content",
     )
     assert compose_lesson_caption(caption) == "immagine di una cabina arcade viola"
+
+
+def test_pointed_picture_keeps_even_a_short_description_after_its_text() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+    caption = _lesson_caption(
+        target_kind="educational_content", target="cabina arcade",
+        description="Cabina arcade viola", visible_text="Sala prove", text_complete=True,
+    )
+    assert compose_lesson_caption(caption) == "Sala prove. Cabina arcade viola"
