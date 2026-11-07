@@ -167,3 +167,12 @@ def test_il_contesto_predefinito_e_la_lezione() -> None:
     assert settings.vlm.context == "lesson"
     assert settings.samples.enabled is False
     assert AppSettings.from_env({"CAPTION_CONTEXT": "general"}).vlm.context == "general"
+
+
+def test_pointing_recovery_defaults_and_retry_switch():
+    settings=AppSettings.from_env({})
+    assert not settings.pointing.mirror_recovery_enabled
+    assert settings.pointing.vlm.retry_empty_response
+    changed=AppSettings.from_env({'POINTING_MIRROR_RECOVERY':'true','POINTING_VLM_RETRY_EMPTY':'false'})
+    assert changed.pointing.mirror_recovery_enabled
+    assert not changed.pointing.vlm.retry_empty_response

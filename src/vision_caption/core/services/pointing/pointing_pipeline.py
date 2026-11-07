@@ -49,6 +49,7 @@ LANDMARK_DECIMALS = 4
 # Un gesto confermato merita sempre una risposta: senza, chi punta non sa se
 # il sistema ha visto il gesto e se deve ripuntare.
 REPOINT_PROMPT = "Non capisco cosa stai indicando. Prova a puntare di nuovo."
+CLOSER_VIEW_PROMPT = "Il dettaglio non è leggibile. Avvicina la fotocamera e punta di nuovo."
 
 
 def collect_hand_landmarks(
@@ -314,6 +315,7 @@ class PointingPipeline:
                 outcome="vlm_error",
                 error_type=type(error).__name__,
             )
+            yield await self._repoint_prompt(frame)
             return
         captioned_at = perf_counter()
         timings = {
@@ -323,6 +325,17 @@ class PointingPipeline:
         if caption is None:
             self._result(frame, images, outcome="no_caption", **timings)
             yield await self._repoint_prompt(frame)
+            return
+
+        if caption.needs_repointing or caption.needs_closer_view:
+            self._result(
+                frame, images,
+                outcome="needs_closer_view" if caption.needs_closer_view else "needs_repointing",
+                **timings, **_caption_fields(caption),
+            )
+            yield await self._repoint_prompt(
+                frame, CLOSER_VIEW_PROMPT if caption.needs_closer_view else REPOINT_PROMPT
+            )
             return
 
         if self._speech_text is not None:
@@ -358,11 +371,11 @@ class PointingPipeline:
             audio=audio,
         )
 
-    async def _repoint_prompt(self, frame: Frame) -> CaptionResult:
-        audio = await self._speech_synthesizer.synthesize(REPOINT_PROMPT)
+    async def _repoint_prompt(self, frame: Frame, text: str = REPOINT_PROMPT) -> CaptionResult:
+        audio = await self._speech_synthesizer.synthesize(text)
         return CaptionResult(
             frame_id=frame.frame_id,
-            caption=REPOINT_PROMPT,
+            caption=text,
             audio=audio,
         )
 

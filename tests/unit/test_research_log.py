@@ -300,6 +300,7 @@ async def test_auto_survives_a_failing_vlm() -> None:
 
 @pytest.mark.asyncio
 async def test_pointing_survives_a_failing_vlm() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import REPOINT_PROMPT
     class FailingGenerator:
         async def generate(self, event, images, context=None):
             raise ConnectionError("ollama non risponde")
@@ -310,7 +311,8 @@ async def test_pointing_survives_a_failing_vlm() -> None:
 
     results = [_ async for _ in pipeline.process(_frame())]
 
-    assert results == []
+    assert len(results) == 1
+    assert results[0].caption == REPOINT_PROMPT
     (result,) = recorder.named("pointing_result")
     assert result["outcome"] == "vlm_error"
 

@@ -301,6 +301,7 @@ class PointingCorridorSettings(SettingsModel):
 
 
 class PointingVlmSettings(SettingsModel):
+    retry_empty_response: bool = True
     timeout_seconds: float = Field(default=30.0, gt=0.0)
     max_output_tokens: int = Field(default=1200, ge=1)
     temperature: float = Field(default=0.1, ge=0.0, le=2.0)
@@ -621,6 +622,7 @@ class AppSettings(SettingsModel):
                     ),
                 ),
                 vlm=PointingVlmSettings(
+                    retry_empty_response=value("POINTING_VLM_RETRY_EMPTY", True),
                     timeout_seconds=value(
                         "POINTING_VLM_TIMEOUT_SECONDS",
                         30.0,

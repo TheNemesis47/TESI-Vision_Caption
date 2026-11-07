@@ -209,3 +209,66 @@ def test_slide_memory_is_appended_to_the_pointing_prompt() -> None:
 
     assert prompt.rstrip().endswith("Slide 2 di 7: Equazioni.")
     assert "Slide 2 di 7" not in build_pointing_prompt(_event(), "lesson")
+
+
+@pytest.mark.asyncio
+async def test_empty_pointing_response_gets_one_simpler_retry():
+    seen=[]
+    async def handler(request):
+        seen.append(json.loads(request.content))
+        content='{}' if len(seen)==1 else json.dumps(_caption_payload())
+        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':content}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result=await OpenRouterPointingCaptionGenerator('',client=client).generate(_event(),_images(),'Memoria precedente')
+    assert result.description=='Una scatola blu.'
+    assert len(seen)==2
+    assert len(seen[1]['messages'][0]['content'][0]['text']) < len(seen[0]['messages'][0]['content'][0]['text'])
+    assert 'Memoria precedente' not in seen[1]['messages'][0]['content'][0]['text']
+
+
+@pytest.mark.asyncio
+async def test_empty_pointing_retry_is_bounded_to_two_calls():
+    calls=[]
+    async def handler(request):
+        calls.append(request)
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result=await OpenRouterPointingCaptionGenerator('',client=client).generate(_event(),_images())
+    assert result is None
+    assert len(calls)==2
+
+
+@pytest.mark.asyncio
+async def test_empty_retry_can_be_disabled():
+    calls=[]
+    async def handler(request):
+        calls.append(request)
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result=await OpenRouterPointingCaptionGenerator('',client=client,retry_empty_response=False).generate(_event(),_images())
+    assert result is None and len(calls)==1
+
+
+@pytest.mark.asyncio
+async def test_two_attempts_share_one_timeout_budget():
+    import asyncio
+    calls=[]
+    async def handler(request):
+        calls.append(request)
+        await asyncio.sleep(.03)
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(TimeoutError):
+            await OpenRouterPointingCaptionGenerator('',client=client,timeout_seconds=.05).generate(_event(),_images())
+    assert len(calls)==2
+
+
+@pytest.mark.asyncio
+async def test_explicit_uncertainty_is_not_retried_into_a_guessed_target():
+    seen=[]
+    async def handler(request):
+        seen.append(request)
+        return httpx.Response(200,json={'choices':[{'message':{'content':json.dumps({**_caption_payload(),'needs_repointing':True})}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result=await OpenRouterPointingCaptionGenerator('',client=client).generate(_event(),_images())
+    assert result.needs_repointing and len(seen)==1

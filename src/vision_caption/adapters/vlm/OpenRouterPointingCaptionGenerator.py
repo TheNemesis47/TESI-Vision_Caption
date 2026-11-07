@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 
@@ -102,6 +103,30 @@ def _image_content(label: str, image: bytes) -> list[dict]:
             },
         },
     ]
+
+
+def pointing_recovery_prompt(event: PointingEvent) -> str:
+    """Richiesta breve per recuperare una risposta vuota, senza memoria."""
+    return f"""Descrivi in italiano il bersaglio indicato dalla linea gialla.
+Tre immagini: CONTESTO completo, FOCUS del corridoio, PULITA senza guide.
+La punta è ({event.ray.start.x:.4f}, {event.ray.start.y:.4f}); la linea va
+verso ({event.ray.end.x:.4f}, {event.ray.end.y:.4f}), coordinate normalizzate.
+Segui il corridoio dalla punta: scegli il primo oggetto identificabile che
+intercetta. Basta attraversarne una parte, non occorre colpirne il centro.
+Ignora la mano e chi punta. Non scegliere un oggetto laterale fuori dal
+corridoio solo perché è più evidente. Se due oggetti sono equivalenti,
+usa il nome comune senza inventare particolari. Per una persona usa persona.
+Può essere un oggetto reale oppure il contenuto di una slide: una lezione
+non obbliga a scegliere una slide. Descrivi oggetto e colori certi in massimo
+venti parole. Non descrivere l'ambiente né testi estranei al bersaglio.
+Rispondi solo JSON, senza copiare un elenco di proprietà o uno schema:
+{{"target_kind":"object o educational_content o unknown",
+"target":"nome del bersaglio oppure null",
+"description":"frase breve concreta oppure stringa vuota",
+"visible_text":null,"text_complete":false,"text_confidence":0.0,
+"confidence":0.0,"needs_repointing":false,"needs_closer_view":false}}
+Se non puoi riconoscere alcun bersaglio, needs_repointing=true.
+"""
 
 
 def build_pointing_payload(
@@ -255,6 +280,7 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
         client: httpx.AsyncClient | None = None,
         context: CaptionContext = "general",
         json_mode: bool = True,
+        retry_empty_response: bool = True,
     ) -> None:
         self._api_key = api_key
         self._context = context
@@ -265,6 +291,7 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
         self._max_tokens = max_tokens
         self._temperature = temperature
         self._client = client
+        self._retry_empty_response = retry_empty_response
 
     async def generate(
         self,
@@ -292,6 +319,33 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
+        # Il timeout copre entrambi i tentativi: una risposta vuota non deve
+        # raddoppiare il tempo massimo di attesa del gesto.
+        async with asyncio.timeout(self._timeout_seconds):
+            for attempt in range(2 if self._retry_empty_response else 1):
+                response_payload = await self._request(payload, headers)
+                content = _extract_assistant_content(response_payload)
+                caption = parse_pointing_caption(content) if content else None
+                if caption is not None and (caption.needs_repointing or caption.needs_closer_view or any((
+                    (caption.target or "").strip(), caption.description.strip(),
+                    (caption.visible_text or "").strip(),
+                ))):
+                    if attempt:
+                        logger.info("POINTING risposta recuperata: frame={} modello={} tentativo={}", event.frame_id, self._model_name, attempt+1)
+                    return caption
+                choices = response_payload.get("choices")
+                first = choices[0] if isinstance(choices,list) and choices else {}
+                finish_reason = first.get("finish_reason") if isinstance(first,dict) else None
+                if finish_reason in SAFETY_FINISH_REASONS:
+                    return None
+                logger.warning(
+                    "POINTING senza contenuto utile: frame={} modello={} tentativo={} finish={} risposta={!r}",
+                    event.frame_id, self._model_name, attempt+1, finish_reason, (content or "")[:600],
+                )
+                payload["messages"][0]["content"][0]["text"] = pointing_recovery_prompt(event)
+        return None
+
+    async def _request(self, payload: dict, headers: dict) -> dict:
         if self._client is not None:
             response = await self._client.post(
                 self._url,
@@ -309,16 +363,5 @@ class OpenRouterPointingCaptionGenerator(PointingCaptionGeneratorPort):
                 )
 
         response.raise_for_status()
-        response_payload = response.json()
-        if not isinstance(response_payload, dict):
-            return None
-        content = _extract_assistant_content(response_payload)
-        if content is None:
-            logger.warning("Risposta POINTING senza testo dal modello visivo.")
-            return None
-        caption = parse_pointing_caption(content)
-        if caption is None:
-            logger.warning(
-                f"Risposta POINTING non interpretabile: {content[:600]!r}"
-            )
-        return caption
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}

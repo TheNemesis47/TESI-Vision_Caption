@@ -522,3 +522,14 @@ async def test_mirror_recovery_is_only_used_when_primary_pose_is_missing(primary
         assert recorder.record.call_args.kwargs['selected']==expected
     await pipeline.close()
     assert primary.closed and recovery.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('flag',['needs_repointing','needs_closer_view'])
+async def test_uncertain_target_gives_actionable_feedback_instead_of_the_guess(flag):
+    from vision_caption.core.services.pointing.pointing_pipeline import CLOSER_VIEW_PROMPT
+    caption=_caption().model_copy(update={flag:True,'description':'Una ipotesi non affidabile'})
+    pipeline,*_=_pipeline((_activation(),),caption)
+    results=[r async for r in pipeline.process(_frame())]
+    assert results[0].caption==(CLOSER_VIEW_PROMPT if flag=='needs_closer_view' else REPOINT_PROMPT)
+    assert 'ipotesi' not in results[0].caption

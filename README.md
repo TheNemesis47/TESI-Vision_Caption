@@ -481,3 +481,17 @@ benchmark mantiene ogni JPEG per cinque osservazioni simulate a 0,21 s.
 uv run python scripts/benchmark_pointing_recovery.py \
   --model models/hand_tracking/hand_landmarker.task
 ```
+
+### Risposte vuote e richieste di ripuntamento
+
+`POINTING_VLM_RETRY_EMPTY=true` consente un solo secondo tentativo quando il
+VLM restituisce una risposta vuota o non interpretabile, usando una richiesta
+più breve e senza memoria. I due tentativi condividono lo stesso timeout
+`POINTING_VLM_TIMEOUT_SECONDS`; le risposte utili richiedono una sola chiamata.
+Una richiesta esplicita del modello di ripuntare o avvicinarsi viene rispettata,
+senza insistere fino a ottenere una descrizione ipotetica.
+
+Un gesto confermato riceve un messaggio vocale anche se il VLM va in errore.
+`needs_closer_view` chiede di avvicinare la fotocamera; `needs_repointing`
+chiede di puntare di nuovo. Il log applicativo indica modello, frame,
+tentativo, motivo di fine e un estratto della risposta vuota/non interpretabile.
