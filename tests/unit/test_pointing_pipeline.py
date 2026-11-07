@@ -342,6 +342,26 @@ def _lesson_caption(**fields) -> PointingCaption:
     return _caption().model_copy(update=fields)
 
 
+def test_lesson_pointing_preserves_a_real_object_with_its_label() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+
+    caption = _lesson_caption(
+        target_kind="object", target="bottiglia", description="Una bottiglia rossa",
+        visible_text="ACQUA", text_complete=True,
+    )
+    assert compose_lesson_caption(caption) == "Una bottiglia rossa. C'è scritto: ACQUA"
+
+
+def test_lesson_pointing_uses_content_rules_for_a_slide_label() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+
+    caption = _lesson_caption(
+        target_kind="educational_content", target="Evaporazione",
+        description="etichetta", visible_text="Evaporazione",
+    )
+    assert compose_lesson_caption(caption) == "Evaporazione"
+
+
 def test_lesson_pointing_reads_a_label_once() -> None:
     from vision_caption.core.services.pointing.pointing_pipeline import (
         compose_lesson_caption,

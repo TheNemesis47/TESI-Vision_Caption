@@ -102,6 +102,8 @@ _FORMULA_SIGNS = re.compile(r"[=+^²³√±≤≥<>∫∑π]")
 
 
 def compose_lesson_caption(caption: PointingCaption) -> str | None:
+    if caption.target_kind == "object":
+        return compose_accessibility_caption(caption)
     description = caption.description.strip()
     target = caption.target.strip() if caption.target else ""
     lines = [
@@ -135,6 +137,7 @@ def compose_lesson_caption(caption: PointingCaption) -> str | None:
 def _caption_fields(caption: PointingCaption) -> dict:
     """Ciò che il modello ha capito del bersaglio, per l'analisi dello studio."""
     return {
+        "target_kind": caption.target_kind,
         "target": caption.target,
         "description": caption.description,
         "visible_text": caption.visible_text,

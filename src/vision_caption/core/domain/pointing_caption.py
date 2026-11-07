@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,6 +12,9 @@ class PointingCandidate(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 class PointingCaption(BaseModel):
+    # unknown conserva la composizione precedente per i modelli che omettono
+    # il campo; la scelta semantica appartiene all'adapter visivo.
+    target_kind: Literal["object", "educational_content", "unknown"] = "unknown"
     target: str | None
     description: str
     visible_text: str | None

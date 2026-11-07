@@ -92,8 +92,16 @@ POINTING_CONTEXT: dict[str, str] = {
     "general": "",
     "lesson": """
 Contesto: una lezione in aula. Chi punta è uno studente ipovedente e il
-bersaglio è spesso una parte di una slide proiettata, della lavagna, di uno
-schermo, di un libro o di un foglio. In quel caso il bersaglio è il blocco di
+bersaglio può essere sia un oggetto reale sia materiale didattico.
+PRIMA scegli il bersaglio in base al corridoio, POI classificalo:
+- target_kind=object: oggetto fisico della stanza, per esempio una sedia,
+  una bottiglia o un computer. Descrivi direttamente l'oggetto e i suoi
+  dettagli visibili; non trasformarlo in una figura della presentazione.
+  Ignora la memoria delle slide. Non descrivere l'ambiente o le superfici.
+- target_kind=educational_content: contenuto dentro una slide proiettata,
+  la lavagna, uno schermo, un libro o un foglio. La sola presenza di una
+  slide nella scena non basta: il corridoio deve intercettarne il contenuto.
+  In quel caso il bersaglio è il blocco di
 contenuto indicato (un titolo, una riga, un elenco, una formula, un grafico),
 non lo schermo o la lavagna intera.
 - Testo: trascrivi in visible_text esattamente il blocco indicato.
@@ -105,6 +113,8 @@ non lo schermo o la lavagna intera.
   visible_text. Se il bersaglio è un'etichetta, basta visible_text.
 - Se il blocco è troppo piccolo o sfocato per leggerlo, imposta
   needs_closer_view=true invece di indovinare.
+- target_kind=unknown: bersaglio incerto; chiedi di ripuntare senza
+  sostituirlo con il testo di una slide fuori dal corridoio.
 """,
 }
 

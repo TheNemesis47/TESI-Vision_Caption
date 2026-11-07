@@ -238,6 +238,13 @@ Valori principali:
 
 ### Configurazione POINTING
 
+Anche con `CAPTION_CONTEXT=lesson`, POINTING può descrivere gli oggetti reali
+della stanza. Il VLM sceglie il bersaglio nel corridoio e restituisce
+`target_kind=object` oppure `educational_content`; il core applica le regole
+di lettura della lezione solo al contenuto didattico. La memoria delle slide
+non deve spostare il bersaglio fuori dal corridoio. I modelli che omettono
+il campo mantengono la composizione precedente (`unknown`).
+
 La modalità POINTING usa il modello MediaPipe
 `models/hand_tracking/hand_landmarker.task`. Il percorso può essere cambiato
 con `HAND_LANDMARKER_MODEL_PATH`.

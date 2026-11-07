@@ -40,8 +40,12 @@ Informazioni geometriche:
 - origine normalizzata: ({event.ray.start.x:.4f}, {event.ray.start.y:.4f})
 - fine normalizzata: ({event.ray.end.x:.4f}, {event.ray.end.y:.4f})
 
-Analizza il corridoio dalla punta verso il bordo. Scegli l'oggetto fisico
-delimitato più allineato con la linea centrale. Ignora la mano e il corpo della
+Analizza il corridoio dalla punta verso il bordo, includendo ciò che si trova
+subito alla punta. Scegli il bersaglio delimitato più allineato con la linea
+centrale. Non scegliere testo o immagini fuori dal corridoio solo perché
+sono leggibili o già descritti nella memoria. Se nessun bersaglio è
+identificabile, usa target=null, description="", needs_repointing=true.
+Ignora la mano e il corpo della
 persona che punta. Non inventare dettagli e non inferire attributi personali.
 Se il bersaglio è una persona, usa soltanto il termine neutro "persona".
 {pointing_context(context)}
@@ -53,6 +57,7 @@ bassa, inseriscili nelle alternatives e imposta needs_repointing=true.
 
 Rispondi esclusivamente con un oggetto JSON nel formato:
 {{
+  "target_kind": "object oppure educational_content oppure unknown",
   "target": "nome sintetico oppure null",
   "description": "descrizione breve dell'oggetto",
   "visible_text": "testo esatto con \\n fra le righe oppure null",
@@ -152,6 +157,7 @@ def _extract_assistant_content(payload: dict) -> str | None:
 # Campi che un modello locale tende a omettere o a riempire male: mancanti o
 # nulli prendono un valore prudente invece di far scartare tutta la risposta.
 _CAPTION_DEFAULTS = {
+    "target_kind": "unknown",
     "target": None,
     "description": "",
     "visible_text": None,
@@ -177,6 +183,8 @@ def _normalize_caption_payload(payload: dict) -> dict:
         key: payload.get(key) if payload.get(key) is not None else default
         for key, default in _CAPTION_DEFAULTS.items()
     }
+    if normalized["target_kind"] not in ("object", "educational_content", "unknown"):
+        normalized["target_kind"] = "unknown"
     for key in ("text_confidence", "confidence"):
         normalized[key] = _clamp_unit(normalized[key])
     for key in ("text_complete", "needs_repointing", "needs_closer_view"):

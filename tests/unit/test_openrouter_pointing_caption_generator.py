@@ -51,6 +51,16 @@ def _caption_payload() -> dict:
     }
 
 
+@pytest.mark.parametrize("kind", ["object", "educational_content", "unknown"])
+def test_target_kind_survives_model_parsing(kind) -> None:
+    caption = parse_pointing_caption(json.dumps({**_caption_payload(), "target_kind": kind}))
+    assert caption.target_kind == kind
+
+
+def test_old_pointing_payload_remains_compatible() -> None:
+    assert parse_pointing_caption(json.dumps(_caption_payload())).target_kind == "unknown"
+
+
 def test_payload_contains_prompt_and_three_images() -> None:
     payload = build_pointing_payload(
         event=_event(),
