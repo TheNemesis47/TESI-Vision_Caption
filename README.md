@@ -323,6 +323,14 @@ Rispetto a `general` cambia soltanto in questa modalità:
 | Voce | frasi discorsive, etichette interne non lette; simboli letti a parole (x², ±, √, ≥); testo prima delle figure, con quota riservata alle immagini entro lo stesso tetto | `LESSON_MAX_WORDS` |
 | Puntamento | contesto delle slide nel prompt; un'etichetta si legge una volta, una formula solo a parole, le etichette di un grafico in fila no | — |
 | Gesto di stop | la mano aperta davanti alla fotocamera, tenuta un attimo, ferma subito la voce sul telefono; il frame con la mano non viene descritto | `LESSON_STOP_GESTURE`, `LESSON_STOP_HOLD_SECONDS` |
+
+Le descrizioni mirano a venti-trenta parole, meno per le slide semplici.
+Il titolo viene detto una volta; seguono le altre scritte e una frase breve
+per ogni immagine, con azione, oggetti principali e colori distinguibili.
+Sfondo e font del testo, abbigliamento e dettagli secondari delle foto non
+servono a riempire la descrizione. Le posizioni delle scritte rispetto alle
+immagini sono riferite solo quando visibili e utili. Il limite complessivo
+resta `LESSON_MAX_WORDS`; formule e grafici conservano le istruzioni dedicate.
 | Classi RF-DETR | il filtro sulle classi è spento: fra due slide lo schermo resta uguale | — |
 
 `scripts/slide_prova.html` contiene sette slide di prova (titolo, formule,

@@ -31,20 +31,23 @@ AUTO_PROMPTS: dict[str, str] = {
         "- Scrivi numeri, orari e date in lettere, nella forma in cui devono essere pronunciati in italiano.\n"
         "- Niente elenchi, markdown o intestazioni. Solo testo semplice in ITALIANO."
     ),
-    "lesson": (f"""Assisti uno studente ipovedente: riferisci il contenuto didattico visibile, in italiano, in massimo cinquanta parole.
+    "lesson": (f"""Assisti uno studente ipovedente: riferisci il contenuto didattico visibile, in italiano, come un breve racconto. Di norma bastano venti-trenta parole; usane meno per una slide semplice e non superare cinquanta parole.
 PRIMA individua i confini del materiale didattico. Guarda SOLO dentro la slide, la lavagna o il foglio; ignora gli oggetti reali accanto e sotto lo schermo. Se il materiale contiene solo testo, non aggiungere un'immagine dall'aula.
 
-FORMATO OBBLIGATORIO, righe separate nell'ordine seguente:
+FORMATO INTERNO OBBLIGATORIO, righe separate nell'ordine seguente. Le etichette vengono tolte prima della voce; scrivi contenuti già discorsivi:
 {PAGE_TAG}: numero pagina visibile (esempio 3/7); scrivi nessuna se assente. Non dedurlo dalla memoria. Questa riga non si legge.
-Titolo: il titolo scritto, se presente.
-Testo: parole chiave e contenuto principale scritto, se presente.
-Immagine: descrizione di ciascuna foto o illustrazione DENTRO il materiale, se presente.
-Figura: cosa mostra ciascun grafico, schema o tabella, se presente.
+Titolo: solo il titolo scritto, se presente; una volta sola.
+Testo: solo le ALTRE parole scritte e il contenuto principale, se presenti, in una frase breve. Non ripetere il titolo.
+Immagine: una sola frase naturale per ciascuna foto DENTRO il materiale, iniziando con "Nell'immagine". La frase deve contenere al massimo quattordici parole, incluso l'inizio.
+Figura: una frase naturale che inizi con "Nella figura" e dica cosa mostra ciascun grafico, schema o tabella, se presente.
 Non scrivere righe vuote o intestazioni per elementi assenti. Vai direttamente al contenuto, senza preamboli pannello, schermo, slide o aula.
 
 CONTENUTO E PRIORITÀ:
-- Riporta prima il testo, poi le immagini. Riserva circa trenta parole a titolo e testo, le restanti alle figure: riassumi il testo lungo e non sacrificare mai l'immagine.
-- Descrivi SEMPRE le fotografie visibili dentro la slide: oggetti principali, azioni visibili, relazioni e colori distinguibili. Non basta una stanza virtuale. Concentrati sugli oggetti, senza riempire il budget con sfondi, pareti o pavimenti.
+- Riporta prima il testo, poi le immagini. Riassumi il testo lungo e non sacrificare mai l'immagine; non allungare una slide semplice per raggiungere il budget.
+- Nelle slide di solo testo leggi titolo e sottotitolo una volta. Non raccontare come sono scritti: niente sfondo, colori delle scritte, font o posizione del titolo, e niente frasi "la slide mostra il titolo".
+- Descrivi SEMPRE le fotografie visibili dentro la slide, con una frase essenziale di circa dieci-dodici parole: azione principale, due o tre oggetti importanti e colori distinguibili. Metti subito il soggetto e il dispositivo che usa, oppure gli oggetti principali con i loro colori. Non basta una stanza virtuale.
+- Per una persona basta "una persona" e ciò che fa, con l'oggetto che usa. Tralascia capelli, barba, età, abbigliamento, mobili secondari e dettagli del televisore o di ciò che appare sul suo schermo. Non passare in rassegna ogni elemento della foto. Non descrivere pareti, pavimenti o altri sfondi.
+- Se aiuta a collegare una scritta alla figura, puoi dire "a destra dell'immagine è scritto" o "sotto l'immagine è scritto", solo se la posizione è visibile e certa. Non inventare posizioni e non ripetere il contenuto.
 - I colori vengono SOLO dall'immagine corrente: se la proiezione li rende ambigui, ometti la tinta o usa chiaro/scuro. Non indovinare colori o parti fuori inquadratura. Non attribuire movimento a una fotografia statica.
 - Formule: leggile a parole come un docente. Grafici: tipo, assi e andamento. Schemi: elementi e collegamenti. Tabelle: dimensioni, intestazioni e confronto; tutte le celle solo se al massimo sei.
 - Testo non leggibile o figura troppo piccola: dillo brevemente e suggerisci di avvicinarsi, senza inventare.
@@ -55,7 +58,9 @@ Serve solo a collegare l'argomento, mai a ricopiare titoli, oggetti o colori. Se
 
 SE NON C'È MATERIALE DIDATTICO:
 Nomina in massimo dodici parole solo oggetti utili (libri, quaderni, fogli, computer, porte, ostacoli vicini). Se assenti rispondi {NOTHING_TO_SAY}. Non descrivere persone in aula.
-Non descrivere mai pavimento, pareti, soffitto, piastrelle, rivestimenti, termosifoni, né colori e materiali di superfici e mobili dell'aula reale. Gli oggetti dentro le figure della slide invece vanno descritti."""),
+Non descrivere mai pavimento, pareti, soffitto, piastrelle, rivestimenti, termosifoni, né colori e materiali di superfici e mobili dell'aula reale. Gli oggetti dentro le figure della slide invece vanno descritti.
+
+CONTROLLO FINALE: ogni riga Immagine deve essere UNA frase di massimo quattordici parole. Se è più lunga, riscrivila conservando azione e oggetti principali con i colori, eliminando il contorno. Niente vestiti, età, capelli, barba, né scene dentro la TV. Il titolo non deve ricomparire nella riga Testo."""),
 }
 
 

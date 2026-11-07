@@ -20,6 +20,16 @@ def test_lesson_pointing_picture_has_its_own_description_budget() -> None:
     assert "venti parole" in prompt
 
 
+def test_lesson_prompt_asks_for_brief_prose_without_title_styling() -> None:
+    prompt = auto_prompt("lesson")
+    assert "venti-trenta parole" in prompt
+    assert "Non ripetere il titolo" in prompt
+    assert "niente sfondo, colori delle scritte, font" in prompt
+    assert "dieci-dodici parole" in prompt
+    assert "Tralascia capelli, barba" in prompt
+    assert "solo se la posizione è visibile e certa" in prompt
+
+
 async def _generate_with_memory(monkeypatch):
     import importlib
     import json
