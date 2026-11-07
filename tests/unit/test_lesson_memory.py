@@ -3,6 +3,24 @@ import pytest
 from vision_caption.core.services.lesson_memory import LessonMemory, split_page_tag
 
 
+def test_conversational_title_keeps_repeat_detection_without_page_numbers() -> None:
+    memory = LessonMemory(clock=lambda: 0.0)
+    memory.remember(None, None, "Il titolo è La realtà virtuale.\nPresentazione A.")
+    assert memory.is_repeat(None, None, "Il titolo è La realtà virtuale.\nPresentazione A.")
+    assert memory.is_repeat(None, None, "Titolo: La realtà virtuale.\nTesto: Presentazione A.")
+    assert not memory.is_repeat(None, None, "Il titolo è Breve storia dei videogiochi.\nPresentazione B.")
+
+
+def test_conversational_picture_is_new_content_only_once() -> None:
+    memory = LessonMemory(clock=lambda: 0.0)
+    title = "Il titolo è La realtà virtuale."
+    picture = title + "\nNell'immagine, una persona con visore giallo."
+    memory.remember(None, None, title)
+    assert not memory.is_repeat(None, None, picture)
+    memory.remember(None, None, picture)
+    assert memory.is_repeat(None, None, picture)
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [

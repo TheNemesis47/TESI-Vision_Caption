@@ -75,9 +75,64 @@ def strip_lesson_preamble(text: str) -> str:
     text = _SLIDE_PREAMBLE.sub("Titolo: ", text, count=1)
     text = re.sub(r"(?im)^Schermo con testo che dice\s+", "", text)
     return re.sub(r"(?im)^Schermo con immagine di\s+", "Immagine: ", text)
+_SPOKEN_FIGURE = r"(?:nell['’]immagine|l['’]immagine mostra|nella figura|la figura mostra)\b"
 _LESSON_SECTION = re.compile(
-    r"(?im)^[ \t]*(?P<label>titolo|testo|immagine|figura)\b(?::|(?= di\b))"
+    r"(?im)^[ \t]*(?:(?P<label>titolo|testo|immagine|figura)\b(?::|(?= di\b))"
+    rf"|{_SPOKEN_FIGURE})"
 )
+_TITLE_LINE = re.compile(r"^Titolo\s*:\s*(.*)$", re.IGNORECASE)
+
+
+def _sentence(text: str) -> str:
+    text = text.strip()
+    return text if not text or text.endswith((".", "!", "?")) else text + "."
+
+
+def _same_words(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text.casefold()).split())
+
+
+def _spoken_content(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    titles = {
+        _same_words(match.group(1))
+        for line in lines if (match := _TITLE_LINE.match(line))
+    }
+    spoken = []
+    for line in lines:
+        if match := _TITLE_LINE.match(line):
+            spoken.append(_sentence("Il titolo è " + match.group(1)))
+            continue
+        body = re.sub(r"^Testo\s*:\s*", "", line, flags=re.IGNORECASE)
+        if _same_words(body) in titles:
+            continue
+        # I frame 23/106 ripetono il titolo descrivendone font e sfondo.
+        # Di quel preciso involucro si conservano le altre scritte citate.
+        quotes = re.findall(r'["“«]([^"”»]+)["”»]', body)
+        if (
+            re.match(r"La (?:slide|diapositiva) mostra il titolo\b", body, re.IGNORECASE)
+            and quotes and _same_words(quotes[0]) in titles
+            and re.search(r"\b(?:sfondo|caratteri|bianco)\b", body, re.IGNORECASE)
+        ):
+            body = ". ".join(quote for quote in quotes[1:] if _same_words(quote) not in titles)
+        if body.strip():
+            spoken.append(_sentence(body))
+    return "\n".join(spoken)
+
+
+def _spoken_figure(text: str) -> str:
+    match = _LESSON_SECTION.match(text)
+    if match is None or match.group("label") is None:
+        return text
+    body = text[match.end():].strip()
+    if re.match(_SPOKEN_FIGURE, body, re.IGNORECASE):
+        return _sentence(body)
+    if body.startswith("di "):
+        body = body[3:]
+    if re.match(r"(?:Un|Una|Uno|Il|Lo|La|I|Gli|Le|A|Al|Alla|In)\b", body):
+        body = body[:1].lower() + body[1:]
+    prefix = "Nella figura, " if match.group("label").casefold() == "figura" else "Nell'immagine, "
+    return _sentence(prefix + body)
 
 
 def lesson_sections(text: str) -> tuple[str, list[str]]:
@@ -90,7 +145,7 @@ def lesson_sections(text: str) -> tuple[str, list[str]]:
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         section = text[match.start():end].strip()
-        if match.group("label").casefold() in ("immagine", "figura"):
+        if (match.group("label") or "immagine").casefold() in ("immagine", "figura"):
             if text[match.end():end].strip():
                 figures.append(section)
         else:
@@ -132,8 +187,8 @@ def lesson_speech(max_words: int):
     def prepare(text: str) -> str:
         text = strip_lesson_preamble(text)
         content, figures = lesson_sections(text)
-        content = speakable_math(content)
-        figures = [speakable_math(figure) for figure in figures]
+        content = speakable_math(_spoken_content(content))
+        figures = [speakable_math(_spoken_figure(figure)) for figure in figures]
         if not figures:
             return limit_words(content, max_words)
         if len((content + " " + " ".join(figures)).split()) <= max_words:

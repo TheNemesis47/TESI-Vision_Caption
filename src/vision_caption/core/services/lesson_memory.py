@@ -65,7 +65,7 @@ def split_page_tag(text: str) -> tuple[int | None, int | None, str]:
     return None, None, body
 
 
-_TITLE = re.compile(r"^\s*Titolo\s*:\s*([^\n.]+)", re.IGNORECASE)
+_TITLE = re.compile(r"^\s*(?:Titolo\s*:|Il titolo è)\s*([^\n.]+)", re.IGNORECASE)
 
 # Lo stesso titolo riformulato ("Fonti di energia (%)" e "Fonti di energia
 # percentuale") resta sopra questa somiglianza; due slide diverse no.

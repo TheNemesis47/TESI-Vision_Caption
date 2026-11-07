@@ -61,8 +61,9 @@ def test_lesson_budget_keeps_the_picture_after_long_slide_text() -> None:
     text = "Titolo: Realtà virtuale.\nTesto: " + "contenuto " * 60
     image = "Immagine: stanza con tavolo nero, sedie rosse e mobile blu."
     spoken = lesson_speech(50)(text + ".\n" + image)
-    assert image in spoken
-    assert spoken.index("Titolo:") < spoken.index("Immagine:")
+    assert "stanza con tavolo nero, sedie rosse e mobile blu." in spoken
+    assert spoken.index("Il titolo è") < spoken.index("Nell'immagine")
+    assert "Immagine:" not in spoken
     assert len(spoken.split()) <= 50
 
 
@@ -70,7 +71,7 @@ def test_lesson_budget_keeps_each_picture_and_puts_text_first() -> None:
     text = "Immagine: tavolo nero e sedie rosse.\nImmagine: persona con visore giallo.\nTesto: " + "parola " * 60
     spoken = lesson_speech(50)(text)
     assert "tavolo nero" in spoken and "visore giallo" in spoken
-    assert spoken.startswith("Testo:")
+    assert spoken.startswith("parola ")
     assert len(spoken.split()) <= 50
 
 
@@ -81,10 +82,52 @@ def test_lesson_budget_keeps_each_picture_and_puts_text_first() -> None:
 ])
 def test_lesson_preamble_goes_directly_to_the_title(prefix) -> None:
     assert lesson_speech(50)(prefix + "Realtà virtuale.\nTesto: Presentazione A.") == (
-        "Titolo: Realtà virtuale.\nTesto: Presentazione A."
+        "Il titolo è Realtà virtuale.\nPresentazione A."
     )
 
 
 def test_content_that_mentions_a_screen_or_slide_is_preserved() -> None:
     text = "Titolo: Come costruire uno schermo.\nTesto: Una slide spiega i pixel."
-    assert lesson_speech(50)(text) == text
+    assert lesson_speech(50)(text) == (
+        "Il titolo è Come costruire uno schermo.\nUna slide spiega i pixel."
+    )
+
+
+def test_lesson_sections_become_conversational_speech() -> None:
+    text = (
+        "Titolo: Entrare in una stanza virtuale\n"
+        "Testo: Un visore pesa circa 500 grammi.\n"
+        "Immagine: Una stanza con tavolo nero e sedie rosse."
+    )
+    spoken = lesson_speech(50)(text)
+    assert spoken == (
+        "Il titolo è Entrare in una stanza virtuale.\n"
+        "Un visore pesa circa 500 grammi.\n"
+        "Nell'immagine, una stanza con tavolo nero e sedie rosse."
+    )
+
+
+def test_text_only_slide_does_not_repeat_title_or_read_its_styling() -> None:
+    # Risposta effettivamente letta nella sessione 9354113f2536, frame 23.
+    text = (
+        'Titolo: La realtà virtuale\n'
+        'Testo: La slide mostra il titolo "La realtà virtuale" in bianco su '
+        'sfondo blu scuro, preceduto da "Presentazione A" in testo più piccolo.'
+    )
+    assert lesson_speech(50)(text) == "Il titolo è La realtà virtuale.\nPresentazione A."
+
+
+def test_repeated_title_in_the_text_is_said_once() -> None:
+    assert lesson_speech(50)(
+        "Titolo: La realtà virtuale\nTesto: La realtà virtuale."
+    ) == "Il titolo è La realtà virtuale."
+
+
+def test_natural_picture_and_its_position_are_preserved_without_another_prefix() -> None:
+    from vision_caption.core.services.speech_text import has_visual_description
+
+    text = "Titolo: Esempio\nImmagine: Nell'immagine si vede un tavolo nero.\nTesto: A destra è scritto: 500 grammi."
+    spoken = lesson_speech(50)(text)
+    assert spoken == "Il titolo è Esempio.\nA destra è scritto: 500 grammi.\nNell'immagine si vede un tavolo nero."
+    assert has_visual_description(spoken)
+    assert lesson_speech(50)(spoken) == spoken

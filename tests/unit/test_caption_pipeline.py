@@ -348,7 +348,7 @@ async def test_first_picture_reaches_audio_even_after_a_similar_text_only_captio
     generator.text += "\nImmagine: tavolo nero."
     second = [r async for r in pipeline.process(Frame(frame_id=2, image_bytes=b"jpeg", caption_mode=CaptionMode.AUTO))]
     assert len(second) == 1
-    assert "Immagine: tavolo nero." in second[0].caption
+    assert "Nell'immagine, tavolo nero." in second[0].caption
     third = [r async for r in pipeline.process(Frame(frame_id=3, image_bytes=b"jpeg", caption_mode=CaptionMode.AUTO))]
     assert third == []
     assert memory.notes[-1].page == 4 and memory.notes[-1].total == 9
