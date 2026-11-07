@@ -63,6 +63,18 @@ _SYMBOLS = (
 )
 
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+_SLIDE_PREAMBLE = re.compile(
+    r"(?i)^\s*(?:(?:un|uno|una|il|lo|la)\s+)?"
+    r"(?:(?:pannello|schermo)\s+(?:con|che mostra)\s+(?:(?:una|la)\s+)?)?"
+    r"(?:slide|diapositiva)\s+(?:con\s+(?:il\s+)?titolo|dal titolo|intitolata)\s*:?\s*"
+)
+
+
+def strip_lesson_preamble(text: str) -> str:
+    # Solo involucri iniziali riconoscibili, mai parole nel contenuto.
+    text = _SLIDE_PREAMBLE.sub("Titolo: ", text, count=1)
+    text = re.sub(r"(?im)^Schermo con testo che dice\s+", "", text)
+    return re.sub(r"(?im)^Schermo con immagine di\s+", "Immagine: ", text)
 _LESSON_SECTION = re.compile(
     r"(?im)^[ \t]*(?P<label>titolo|testo|immagine|figura)\b(?::|(?= di\b))"
 )
@@ -118,6 +130,7 @@ def lesson_speech(max_words: int):
     """Il filtro completo della modalità lezione, da applicare prima della voce."""
 
     def prepare(text: str) -> str:
+        text = strip_lesson_preamble(text)
         content, figures = lesson_sections(text)
         content = speakable_math(content)
         figures = [speakable_math(figure) for figure in figures]

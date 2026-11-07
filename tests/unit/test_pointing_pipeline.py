@@ -460,3 +460,14 @@ async def test_lesson_pointing_sends_the_slide_memory_to_the_model() -> None:
 
     assert "Slide 2 di 7: Titolo: Equazioni" in generator.contexts[0]
     assert results[0].caption == results[0].caption.upper()
+
+
+def test_lesson_pointing_reads_content_without_the_generic_slide_wrapper() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+    caption = _lesson_caption(
+        target="testo", description="Testo sulla slide proiettata",
+        visible_text="Un visore pesa\n circa 500 grammi", target_kind="educational_content",
+    )
+    assert compose_lesson_caption(caption) == "Un visore pesa, circa 500 grammi"
+
+

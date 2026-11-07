@@ -99,6 +99,10 @@ def compose_accessibility_caption(
 LESSON_MAX_VISIBLE_LINES = 2
 LESSON_MAX_VISIBLE_WORDS = 20
 _FORMULA_SIGNS = re.compile(r"[=+^²³√±≤≥<>∫∑π]")
+_GENERIC_SLIDE_DESCRIPTION = re.compile(
+    r"(?i)^(?:testo|blocco di testo|etichetta)"
+    r"(?: (?:sulla|su una|della|di una) (?:slide|diapositiva)(?: proiettata)?)?\.?$"
+)
 
 
 def compose_lesson_caption(caption: PointingCaption) -> str | None:
@@ -119,6 +123,8 @@ def compose_lesson_caption(caption: PointingCaption) -> str | None:
     )
     if not readable:
         return description or target or None
+    if _GENERIC_SLIDE_DESCRIPTION.fullmatch(description):
+        return visible_text
     # Una formula è già letta a parole nella descrizione: rileggerla scritta
     # la direbbe due volte.
     if description and _FORMULA_SIGNS.search(visible_text):

@@ -82,6 +82,8 @@ AUTO_PROMPTS: dict[str, str] = {
         "REGOLE:\n"
         "- Parla direttamente del contenuto: non ripetere queste istruzioni e non "
         "nominare lo studente, la lezione o l'aula.\n"
+        "- Niente preamboli come un pannello con una slide, schermo con testo "
+        "o la slide mostra: comincia dal titolo e dai contenuti.\n"
         "- Riporta solo ciò che leggi o vedi con certezza. Se il testo non è leggibile, "
         "dillo in poche parole e suggerisci di avvicinarsi, senza indovinare.\n"
         "- Non descrivere il docente né le persone in aula, salvo che indichino qualcosa "
@@ -118,6 +120,8 @@ PRIMA scegli il bersaglio in base al corridoio, POI classificalo:
 contenuto indicato (un titolo, una riga, un elenco, una formula, un grafico),
 non lo schermo o la lavagna intera.
 - Testo: trascrivi in visible_text esattamente il blocco indicato.
+  Se basta il testo, lascia description vuota: non anteporre testo sulla
+  slide proiettata, pannello o schermo. La voce deve partire dal contenuto.
 - Formula: in visible_text la forma scritta, in description la lettura a
   parole come la pronuncerebbe un docente.
 - Grafico o schema: in description di' che tipo di figura è e cosa mostra;

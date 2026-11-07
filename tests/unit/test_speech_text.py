@@ -72,3 +72,19 @@ def test_lesson_budget_keeps_each_picture_and_puts_text_first() -> None:
     assert "tavolo nero" in spoken and "visore giallo" in spoken
     assert spoken.startswith("Testo:")
     assert len(spoken.split()) <= 50
+
+
+@pytest.mark.parametrize("prefix", [
+    "Un pannello con una slide con il titolo: ",
+    "Una slide con il titolo ",
+    "Schermo con una slide dal titolo ",
+])
+def test_lesson_preamble_goes_directly_to_the_title(prefix) -> None:
+    assert lesson_speech(50)(prefix + "Realtà virtuale.\nTesto: Presentazione A.") == (
+        "Titolo: Realtà virtuale.\nTesto: Presentazione A."
+    )
+
+
+def test_content_that_mentions_a_screen_or_slide_is_preserved() -> None:
+    text = "Titolo: Come costruire uno schermo.\nTesto: Una slide spiega i pixel."
+    assert lesson_speech(50)(text) == text
