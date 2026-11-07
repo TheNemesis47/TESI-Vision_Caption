@@ -423,3 +423,39 @@ contratto audio e il client; questa modifica resta separata dai fix UICI.
 Riferimenti: [modelli](https://elevenlabs.io/docs/overview/models),
 [metodologia delle latenze](https://elevenlabs.io/docs/eleven-api/concepts/latency-methodology),
 [protocollo Text to Dialogue](https://elevenlabs.io/docs/api-reference/text-to-dialogue/ttd-websocket).
+
+### Regressione sui dati UICI
+
+Gli strumenti riusano i sample e il parser del log di ricerca; non includono
+le immagini nel repository. I risultati restano in `Docs/`, esclusa da Git.
+
+```bash
+# Cronologia e righe applicative nei dieci minuti prima/dopo i puntamenti.
+# Il nome del .log può essere precedente alla data contenuta nelle righe.
+uv run python scripts/summarize_research_log.py \
+  logs/research/20261106-093842_4946323addfd.jsonl --pointing-details \
+  --application-log logs/vision_caption_2026-10-29.log logs/vision_caption_2026-10-31.log
+
+# Solo ricomposizione dei risultati conservati: nessuna chiamata al VLM.
+uv run python scripts/regressione_uici.py --offline
+
+# Confronto reale prima/dopo, stesso modello, tre chiamate per immagine.
+# La chiave OpenRouter viene letta da .env o dall'ambiente, mai stampata.
+uv run --with pymupdf python scripts/regressione_uici.py \
+  --pdf 'artifacts/Slide studio VisionCaption – UICI Salerno.pptx.pdf' \
+  --memory recorded --repeat 3 --output Docs/regressione_uici_definitiva.md
+
+# Ristima statica delle pose sui JPEG: NON ricostruisce i frame mancanti.
+uv run python scripts/rigioca_pose_sample.py \
+  --model models/hand_tracking/hand_landmarker.task --include-auto
+```
+
+`regressione_uici.py` conserva testo grezzo, testo preparato per la voce,
+metadati e tempi in JSONL, oltre al confronto Markdown affiancato. Usa la
+revisione `63d9337` per il prima controllato; il precedente storico della prof
+resta una terza colonna distinta. Nei vecchi sample POINTING la memoria manca:
+con `--memory recorded` viene ricostruita dalle precedenti utterance AUTO.
+I tempi sono richieste VLM, non audio sul telefono. Le ripetizioni sulla stessa
+immagine non costituiscono una valutazione su utenti o ambienti indipendenti.
+`--recompose-source percorso.jsonl` riapplica solo il filtro vocale corrente
+alle risposte già misurate, senza chiamare il modello.

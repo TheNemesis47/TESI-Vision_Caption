@@ -14,6 +14,8 @@ import argparse
 import csv
 import json
 from collections import Counter
+from datetime import datetime, timedelta, timezone
+from math import ceil
 from pathlib import Path
 from statistics import median
 
@@ -33,6 +35,15 @@ def median_or_none(values: list[float]) -> float | None:
     return round(median(values), 1) if values else None
 
 
+def percentile_or_none(values: list[float], percentile: float = 0.95) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = (len(ordered) - 1) * percentile
+    lower = int(rank)
+    return round(ordered[lower] + (ordered[ceil(rank)] - ordered[lower]) * (rank - lower), 1)
+
+
 def summarize(events: list[dict]) -> dict:
     by_name: dict[str, list[dict]] = {}
     for event in events:
@@ -49,6 +60,7 @@ def summarize(events: list[dict]) -> dict:
     skipped_reasons = Counter(
         item.get("reason") for item in by_name.get("utterance_skipped", [])
     )
+    pointing_frames = by_name.get("pointing_frame", [])
     pointing = by_name.get("pointing_result", [])
     pointing_outcomes = Counter(item.get("outcome") for item in pointing)
     auto_outcomes = Counter(
@@ -84,6 +96,14 @@ def summarize(events: list[dict]) -> dict:
             for outcome, count in auto_outcomes.items()
             if outcome.startswith("suppressed")
         ),
+        "auto_latency_p95_ms": percentile_or_none([u["frame_to_audio_ms"] for u in utterances if u.get("mode") == "AUTO"]),
+        "pointing_latency_p95_ms": percentile_or_none([u["frame_to_audio_ms"] for u in utterances if u.get("mode") == "POINTING"]),
+        "pointing_diagnostic_frames": len(pointing_frames),
+        "pointing_no_hand_frames": sum(f.get("reason") == "no_hand" for f in pointing_frames),
+        "pointing_pose_rejections": dict(Counter(
+            hand.get("reason") for frame in pointing_frames for hand in frame.get("hands", [])
+            if hand.get("reason") not in ("activated", "held", "confirming")
+        )),
         "pointing_activations": len(by_name.get("pointing_activation", [])),
         "pointing_retargets": sum(
             1 for item in by_name.get("pointing_activation", []) if item.get("retarget")
@@ -122,10 +142,45 @@ def summarize(events: list[dict]) -> dict:
     }
 
 
+def pointing_details(events: list[dict], application_logs: list[Path], window_seconds: float) -> None:
+    activations = [event for event in events if event["event"] == "pointing_activation"]
+    print("Cronologia modalità e puntamento (UTC; i frame senza diagnostica non sono tentativi contabili):")
+    for event in events:
+        if event["event"] in ("mode_change", "pointing_activation", "pointing_result"):
+            print(json.dumps(event, ensure_ascii=False))
+    for activation in activations:
+        nearby = [event for event in events if event["event"] == "utterance_skipped"
+                  and abs(event["t"] - activation["t"]) <= window_seconds]
+        print(f"frame {activation['frame_id']}, ±{window_seconds:g} s: skip={len(nearby)}, "
+              f"reasons={dict(Counter(event.get('reason') for event in nearby))}")
+    centers = [datetime.fromisoformat(event["ts"]) for event in activations]
+    for path in application_logs:
+        selected = []
+        diagnostic_count = 0
+        with path.open(encoding="utf-8", errors="replace") as source:
+            for line_number, line in enumerate(source, 1):
+                try:
+                    stamp = datetime.strptime(line[:23], "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                if not any(abs(stamp-center) <= timedelta(seconds=window_seconds) for center in centers):
+                    continue
+                if any(word in line for word in ("POINTING posa", "indice=", "pollice=", "gesture_recognizer")):
+                    diagnostic_count += 1
+                if any(word in line for word in ("POINTING", "pointing", "indice=", "pollice=", "Sending audio response", "ERROR")):
+                    selected.append((line_number, line.rstrip()))
+        print(f"{path}: {diagnostic_count} righe con angoli/pose nella finestra. Orari applicativi interpretati UTC.")
+        for line_number, line in selected:
+            print(f"{path}:{line_number}: {line}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", nargs="+", type=Path)
     parser.add_argument("--csv", type=Path, help="scrive il riepilogo in CSV")
+    parser.add_argument("--pointing-details", action="store_true", help="cronologia, skip vicini e diagnostica dei puntamenti")
+    parser.add_argument("--application-log", type=Path, nargs="*", default=[], help="log applicativi con timestamp UTC interni, anche se il nome è di un'altra data")
+    parser.add_argument("--window-seconds", type=float, default=600, help="finestra prima/dopo ogni attivazione; default 10 minuti per lato")
     arguments = parser.parse_args()
 
     rows = [summarize(events) for events in map(load, sorted(arguments.log)) if events]
@@ -140,6 +195,11 @@ def main() -> None:
             writer.writerows(rows)
         print(f"{len(rows)} sessioni scritte in {arguments.csv}")
         return
+
+    if arguments.pointing_details:
+        for path in sorted(arguments.log):
+            print(f"--- {path}")
+            pointing_details(load(path), arguments.application_log, arguments.window_seconds)
 
     for row in rows:
         print(f"--- sessione {row['session_id']}")

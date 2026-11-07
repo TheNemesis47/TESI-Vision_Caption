@@ -369,3 +369,18 @@ def test_retarget_can_be_disabled() -> None:
     for step in range(5):
         result = recognizer.update((second_target,), timestamp=0.35 + 0.1 * step)
         assert result.activations == ()
+
+
+@pytest.mark.parametrize(('extensions','thumb','expected'), [
+    # JPEG UICI 143 e AUTO 107 ristimati ex post con MediaPipe a 0,5.
+    ((151.06,123.61,107.09,121.27),1.501,True),
+    ((148.11,100.42,118.67,134.53),.512,True),
+    # UICI 799 a confidence 0,4: la mano riappare ma indice e pollice
+    # restano fuori soglia. Non dichiarare risolto il gesto abbassando solo
+    # la confidence del detector.
+    ((130.9,78.1,94.4,82.7),2.299,False),
+])
+def test_real_sample_angles_keep_their_measured_classification(extensions,thumb,expected):
+    angles={name:FingerAngles(pip=value,dip=value) for name,value in zip(
+        ('INDICE','MEDIO','ANULARE','MIGNOLO'),extensions,strict=True)}
+    assert is_pointing_pose(angles,thumb,active=False,settings=GestureRecognizerSettings()) is expected
