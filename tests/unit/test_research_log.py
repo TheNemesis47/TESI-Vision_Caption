@@ -529,3 +529,13 @@ async def test_auto_stays_silent_on_a_slide_already_described() -> None:
     assert skipped["reason"] == "same_slide"
     (described,) = recorder.named("slide_described")
     assert described["page"] == 4
+
+
+def test_sample_carries_build_and_model_without_needing_the_research_log(tmp_path):
+    from vision_caption.adapters.research.file_caption_sample_store import FileCaptionSampleStore
+    meta={'app_version':'verified-build','vlm_provider':'local','vlm_model':'qwen3-vl:8b','caption_context':'lesson'}
+    store=FileCaptionSampleStore(tmp_path,metadata=meta)
+    store.save('pointing_000008',{}, {'mode':'POINTING','outcome':'empty_caption'})
+    saved=json.loads((tmp_path/'pointing_000008/caption.json').read_text())
+    assert all(saved[key]==value for key,value in meta.items())
+    assert saved['outcome']=='empty_caption'

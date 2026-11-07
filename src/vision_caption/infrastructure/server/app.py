@@ -7,6 +7,7 @@ from vision_caption.infrastructure.server.ws_handler import router as ws_router
 from vision_caption.infrastructure.server.static_frontend import mount_frontend
 from vision_caption.infrastructure.server.research import (
     ResearchSessions,
+    app_version,
     router as research_router,
 )
 
@@ -370,7 +371,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         session_id = getattr(research_recorder, "session_id", None) or (
             datetime.now().strftime("%Y%m%d-%H%M%S")
         )
-        return FileCaptionSampleStore(settings.samples.output_dir / session_id)
+        return FileCaptionSampleStore(settings.samples.output_dir / session_id, metadata={
+            "app_version": app_version(),
+            "vlm_provider": settings.vlm.resolved_provider,
+            "vlm_model": settings.vlm.resolved_model_name,
+            "caption_context": settings.vlm.context,
+            "use_mocks": settings.runtime.use_mocks,
+        })
 
     def create_pipeline(
         research_recorder: ResearchRecorderPort | None = None,
@@ -467,7 +474,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # Health check
     @app.get("/health")
     def health():
-        return {"status": "ok", "mode": "mock" if use_mocks else "production"}
+        return {"status": "ok", "mode": "mock" if use_mocks else "production", "app_version": app_version()}
 
     # Il frontend va montato per ultimo: /health, /docs e /ws/vision devono
     # continuare a essere risolti dalle route backend registrate sopra.

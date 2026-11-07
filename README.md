@@ -495,3 +495,24 @@ Un gesto confermato riceve un messaggio vocale anche se il VLM va in errore.
 `needs_closer_view` chiede di avvicinare la fotocamera; `needs_repointing`
 chiede di puntare di nuovo. Il log applicativo indica modello, frame,
 tentativo, motivo di fine e un estratto della risposta vuota/non interpretabile.
+
+### Verifica della versione realmente in esecuzione
+
+`GET /health` include `app_version`. Ogni nuovo `caption.json` conserva anche
+`app_version`, `vlm_provider`, `vlm_model`, `caption_context` e `use_mocks`,
+così un sample resta identificabile anche senza il research log.
+
+Il push su `main` avvia **CI**, che testa e costruisce senza pubblicare
+l'immagine Docker Hub. **Release** pubblica soltanto su tag `v*` o avvio
+manuale. Fare pull o riavviare un'immagine Docker Hub precedente non applica
+i fix di `main`. Per una build locale identificabile, in PowerShell:
+
+```powershell
+git pull origin main
+$env:GIT_COMMIT = (git rev-parse HEAD)
+docker compose build server
+docker compose up -d --no-deps server
+```
+
+Il valore `unknown` indica che il commit non è stato incorporato nella build;
+non certifica che il container sia aggiornato.

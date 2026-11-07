@@ -34,7 +34,10 @@ def test_frontend_health_assets_and_spa_fallback(tmp_path) -> None:
     assert root.headers["content-type"].startswith("text/html")
     assert "Vision Caption" in root.text
     assert health.status_code == 200
-    assert health.json() == {"status": "ok", "mode": "mock"}
+    assert health.json()["status"] == "ok"
+    assert health.json()["mode"] == "mock"
+    assert isinstance(health.json()["app_version"],str)
+    assert health.json()["app_version"]
     assert asset.status_code == 200
     assert "vision-caption" in asset.text
     assert client_route.status_code == 200
@@ -58,3 +61,14 @@ def test_websocket_route_precedes_frontend_mount(tmp_path) -> None:
     assert config["type"] == "stream_config"
     assert config["protocol_version"] == 1
     assert config["max_in_flight"] == 1
+
+
+def test_health_reports_the_embedded_build_revision(tmp_path,monkeypatch):
+    from vision_caption.infrastructure.server.research import app_version
+    monkeypatch.setenv('GIT_COMMIT','tested-build-sha')
+    app_version.cache_clear()
+    try:
+        with TestClient(_app_with_frontend(tmp_path)) as client:
+            assert client.get('/health').json()['app_version']=='tested-build-sha'
+    finally:
+        app_version.cache_clear()

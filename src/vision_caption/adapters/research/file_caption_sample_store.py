@@ -17,8 +17,9 @@ from loguru import logger
 
 
 class FileCaptionSampleStore:
-    def __init__(self, session_dir: Path) -> None:
+    def __init__(self, session_dir: Path, metadata: dict[str, Any] | None = None) -> None:
         self._session_dir = session_dir
+        self._metadata = dict(metadata or {})
 
     def save(
         self,
@@ -32,7 +33,7 @@ class FileCaptionSampleStore:
             for file_name, content in images.items():
                 (sample_dir / file_name).write_bytes(content)
             (sample_dir / "caption.json").write_text(
-                json.dumps(record, ensure_ascii=False, indent=2, default=str),
+                json.dumps({**record, **self._metadata}, ensure_ascii=False, indent=2, default=str),
                 encoding="utf-8",
             )
         except OSError as error:
