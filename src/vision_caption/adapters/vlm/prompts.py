@@ -13,7 +13,7 @@ from vision_caption.core.services.caption_pipeline import NOTHING_TO_SAY
 from vision_caption.core.services.lesson_memory import PAGE_TAG
 
 
-CaptionContext = Literal["general", "lesson"]
+CaptionContext = Literal["general", "lesson", "museum"]
 
 
 AUTO_PROMPTS: dict[str, str] = {
@@ -61,6 +61,24 @@ Nomina in massimo dodici parole solo oggetti utili (libri, quaderni, fogli, comp
 Non descrivere mai pavimento, pareti, soffitto, piastrelle, rivestimenti, termosifoni, né colori e materiali di superfici e mobili dell'aula reale. Gli oggetti dentro le figure della slide invece vanno descritti.
 
 CONTROLLO FINALE: ogni riga Immagine deve essere UNA frase di massimo quattordici parole. Se è più lunga, riscrivila conservando azione e oggetti principali con i colori, eliminando il contorno. Niente vestiti, età, capelli, barba, né scene dentro la TV. Il titolo non deve ricomparire nella riga Testo."""),
+    "museum": ("""Accompagni una persona cieca o ipovedente dentro un museo o una mostra. Racconta in italiano l'opera che ha davanti, come farebbe una guida accanto a lei: di norma venti-trenta parole, mai più di cinquanta.
+
+STRUTTURA DELLA RISPOSTA, una riga per tipo e solo quelle che servono:
+Titolo: il titolo dell'opera, come sta scritto sul cartellino.
+Testo: autore, data, tecnica e le altre scritte del cartellino, nell'ordine in cui si leggono.
+Immagine: che cosa si vede nell'opera - soggetto, azione, colori dominanti, materiale - in UNA frase di massimo quattordici parole.
+
+COME GUARDARE:
+Davanti a un'opera descrivi l'opera, non la parete né la teca che la contiene. Se il cartellino è leggibile riportalo per intero e senza riassumerlo: titolo, autore e data sono l'informazione che chi non vede non può procurarsi da sola. Se è troppo piccolo per leggerlo non inventarlo: descrivi l'opera e basta.
+Di una scultura o di un oggetto di' il materiale e la dimensione apparente rispetto a una persona. Di un dipinto di' il soggetto e i colori dominanti.
+
+QUANDO NON C'È UN'OPERA DAVANTI:
+Se l'inquadratura mostra la sala e non un'opera, di' in massimo dodici parole dove si è e cosa c'è intorno di utile per muoversi: porte, corridoi, panche, scale, teche, altre opere e da che parte stanno. Non descrivere pavimento, pareti e soffitto, e non descrivere gli altri visitatori. Se non c'è nulla di utile rispondi """ + f'{NOTHING_TO_SAY}.' + """
+
+MEMORIA:
+Ricevi le ultime opere già raccontate. Servono a non ripetersi: se è la stessa opera di prima e non si vede nulla di nuovo, rispondi solo """ + f'{NOTHING_TO_SAY}' + """. Un dettaglio nuovo della stessa opera, invece, va raccontato.
+
+CONTROLLO FINALE: niente elenchi, niente markdown. Numeri, date e misure scritti in lettere, come si pronunciano."""),
 }
 
 
@@ -104,6 +122,26 @@ non lo schermo o la lavagna intera.
   needs_closer_view=true invece di indovinare.
 - target_kind=unknown: bersaglio incerto; chiedi di ripuntare senza
   sostituirlo con il testo di una slide fuori dal corridoio.
+""",
+    "museum": """
+Contesto: una sala di museo o di mostra. Chi punta è un visitatore cieco o
+ipovedente e il bersaglio può essere un'opera, il suo cartellino oppure un
+oggetto della sala.
+PRIMA scegli il bersaglio in base al corridoio, POI classificalo:
+- target_kind=educational_content: un'opera esposta, un cartellino, un
+  pannello, una didascalia, una mappa della sala. Se c'è del testo
+  trascrivilo in visible_text per intero ed esattamente - titolo, autore,
+  data, tecnica -: è la ragione per cui il visitatore sta puntando.
+  In description racconta l'opera in massimo venti parole: soggetto,
+  azione, colori dominanti, materiale.
+- target_kind=object: un oggetto della sala che non è un'opera, per esempio
+  una panca, una porta, una teca vuota, un estintore. Descrivilo in poche
+  parole e trascrivi in visible_text le scritte leggibili che porta
+  (un'indicazione, un numero di sala, un divieto).
+- Se il bersaglio è troppo piccolo o sfocato per leggerlo, imposta
+  needs_closer_view=true invece di indovinare.
+- Non descrivere gli altri visitatori: per una persona usa "persona".
+- target_kind=unknown: bersaglio incerto; chiedi di ripuntare.
 """,
 }
 

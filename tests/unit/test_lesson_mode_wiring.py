@@ -62,3 +62,32 @@ def test_mirror_recovery_has_a_separate_estimator_and_does_not_change_auto():
     assert pointing._recovery_pose_estimator is not pipeline._hand_pose_estimator
     assert pointing._hand_pose_estimator is pipeline._hand_pose_estimator
     assert _pipeline('lesson')._pointing_pipeline._recovery_pose_estimator is None
+
+
+def test_museum_mode_keeps_the_guided_machinery_with_its_own_words() -> None:
+    """Al museo cambiano i prompt e le parole della memoria, non la meccanica."""
+    from vision_caption.adapters.vlm.prompts import AUTO_PROMPTS, POINTING_CONTEXT
+
+    museum = _pipeline("museum")
+
+    assert museum._lesson_memory is not None
+    assert museum._speech_text is not None
+    assert museum._stop_gesture is not None
+    assert museum._pointing_pipeline._lesson_memory is museum._lesson_memory
+
+    museum._lesson_memory.remember(None, None, "Titolo: La Gioconda")
+    context = museum._lesson_memory.context()
+    assert "Opere già raccontate" in context
+    assert "Slide" not in context
+
+    assert "museo" in AUTO_PROMPTS["museum"].lower()
+    assert "cartellino" in POINTING_CONTEXT["museum"]
+
+
+def test_every_context_has_its_prompts() -> None:
+    from vision_caption.adapters.vlm.prompts import AUTO_PROMPTS, POINTING_CONTEXT
+    from vision_caption.infrastructure.settings import VlmSettings
+    from typing import get_args
+
+    contexts = get_args(VlmSettings.model_fields["context"].annotation)
+    assert set(contexts) == set(AUTO_PROMPTS) == set(POINTING_CONTEXT)

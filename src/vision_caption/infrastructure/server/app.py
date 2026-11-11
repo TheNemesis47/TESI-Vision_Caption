@@ -132,9 +132,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.settings = settings
 
     use_mocks = settings.runtime.use_mocks
-    # Le funzioni pensate per lo studio (memoria delle slide, filtro delle
-    # foto mosse, simboli letti a parole) valgono solo in modalità lezione.
-    lesson = settings.vlm.context == "lesson"
+    # Le funzioni pensate per lo studio (memoria di ciò che è già stato
+    # descritto, filtro delle foto mosse, simboli letti a parole, gesto di
+    # stop) valgono in ogni contesto guidato: a lezione e al museo cambiano i
+    # prompt e le parole della memoria, non la meccanica.
+    guided = settings.vlm.context in ("lesson", "museum")
     
     if use_mocks:
         logger.info("Initializing server in MOCK MODE (no external dependencies needed)...")
@@ -211,14 +213,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             # nuova slide. Decide SSIM, e la deduplica del testo fa il resto.
             suppress_unchanged_class_counts=(
                 settings.auto.suppress_unchanged_class_counts
-                and not lesson
+                and not guided
             ),
             semantic_box_iou_threshold=(
                 settings.auto.semantic_box_iou_threshold
             ),
             min_sharpness=(
                 settings.auto.lesson_min_sharpness
-                if lesson and settings.auto.lesson_min_sharpness > 0
+                if guided and settings.auto.lesson_min_sharpness > 0
                 else None
             ),
         )
@@ -390,12 +392,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             LessonMemory(
                 max_notes=settings.auto.lesson_memory_slides,
                 max_idle_seconds=settings.auto.lesson_memory_idle_seconds,
+                item="opera" if settings.vlm.context == "museum" else "slide",
             )
-            if lesson and settings.auto.lesson_memory_slides > 0
+            if guided and settings.auto.lesson_memory_slides > 0
             else None
         )
         speech_text = (
-            lesson_speech(settings.auto.lesson_max_words) if lesson else None
+            lesson_speech(settings.auto.lesson_max_words) if guided else None
         )
         if use_mocks:
             hand_pose_estimator = MockHandPoseEstimator()
@@ -456,7 +459,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                         hold_seconds=settings.auto.lesson_stop_hold_seconds,
                     )
                 )
-                if lesson and settings.auto.lesson_stop_gesture
+                if guided and settings.auto.lesson_stop_gesture
                 else None
             ),
         )

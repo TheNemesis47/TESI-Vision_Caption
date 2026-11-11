@@ -80,7 +80,7 @@ class VlmSettings(SettingsModel):
     api_key: str = Field(default="", repr=False)
     # "lesson" adatta i prompt allo studio: slide, lavagna e materiale
     # didattico durante una lezione. "general" è l'uso libero della tesi.
-    context: Literal["general", "lesson"] = "lesson"
+    context: Literal["general", "lesson", "museum"] = "lesson"
     # Con un modello locale il server lo fa caricare all'avvio e aspetta fino
     # a questo tempo prima di accettare utenti. 0 lo disattiva.
     warmup_timeout_seconds: float = Field(default=300.0, ge=0.0)

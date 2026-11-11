@@ -313,7 +313,8 @@ frontend completo è in `Docs/handoff_frontend_pointing_overlay.md`.
 
 `CAPTION_CONTEXT=lesson`, il predefinito, adatta il sistema allo studio: uno
 studente ipovedente segue una lezione e inquadra slide, lavagna o fogli.
-Rispetto a `general` cambia soltanto in questa modalità:
+`CAPTION_CONTEXT=museum` usa la stessa meccanica con parole da museo (vedi
+sotto). Rispetto a `general` cambiano soltanto in questi contesti guidati:
 
 | Funzione | Cosa fa | Impostazione |
 |---|---|---|
@@ -332,6 +333,24 @@ servono a riempire la descrizione. Le posizioni delle scritte rispetto alle
 immagini sono riferite solo quando visibili e utili. Il limite complessivo
 resta `LESSON_MAX_WORDS`; formule e grafici conservano le istruzioni dedicate.
 | Classi RF-DETR | il filtro sulle classi è spento: fra due slide lo schermo resta uguale | — |
+
+### Modalità museo
+
+`CAPTION_CONTEXT=museum` accompagna una persona cieca o ipovedente dentro una
+mostra. La meccanica è quella della lezione - memoria di ciò che è già stato
+raccontato, foto mosse scartate, simboli letti a parole, tetto di parole,
+gesto della mano aperta che ferma la voce - e cambiano le parole:
+
+| Funzione | Cosa fa |
+|---|---|
+| Davanti a un'opera | titolo, autore, data e tecnica letti dal cartellino per intero, poi una frase sul soggetto, i colori dominanti o il materiale |
+| In una sala senza opere | dove si è e cosa serve per muoversi (porte, corridoi, panche, scale, teche) in massimo dodici parole; gli altri visitatori non si descrivono |
+| Memoria | «Opere già raccontate al visitatore» al posto delle slide: la stessa opera non viene ripetuta, un dettaglio nuovo sì |
+| Puntamento | il cartellino indicato col dito si legge per intero; un oggetto della sala (panca, porta, teca) si descrive con le sue scritte |
+
+Le soglie restano quelle con il prefisso `LESSON_` (`LESSON_MAX_WORDS`,
+`LESSON_MIN_SHARPNESS`, `LESSON_MEMORY_SLIDES`): il prefisso è storico, i
+valori valgono per ogni contesto guidato.
 
 `scripts/slide_prova.html` contiene sette slide di prova (titolo, formule,
 grafico a linee, a barre, parabola, tabella, schema) da proiettare a schermo

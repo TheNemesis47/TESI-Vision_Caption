@@ -85,12 +85,21 @@ def slide_title(text: str) -> str | None:
     return " ".join(title.split()) or None
 
 
-def _label(note: SlideNote) -> str:
+# Al museo non ci sono pagine: cambia la parola, non la meccanica.
+ITEM_LABELS = {"slide": "Slide", "opera": "Opera"}
+MEMORY_HEADERS = {
+    "slide": "Slide già descritte allo studente, dalla meno recente alla più recente:",
+    "opera": "Opere già raccontate al visitatore, dalla meno recente alla più recente:",
+}
+
+
+def _label(note: SlideNote, item: str = "slide") -> str:
+    word = ITEM_LABELS[item]
     if note.page is None:
-        return "Slide senza numero"
+        return f"{word} senza numero" if item == "slide" else word
     if note.total is None:
-        return f"Slide {note.page}"
-    return f"Slide {note.page} di {note.total}"
+        return f"{word} {note.page}"
+    return f"{word} {note.page} di {note.total}"
 
 
 class LessonMemory:
@@ -100,7 +109,11 @@ class LessonMemory:
         max_idle_seconds: float = 900.0,
         max_note_chars: int = 400,
         clock: Callable[[], float] = monotonic,
+        item: str = "slide",
     ) -> None:
+        if item not in ITEM_LABELS:
+            raise ValueError(f"item sconosciuto: {item}")
+        self._item = item
         self._max_notes = max_notes
         self._max_idle_seconds = max_idle_seconds
         self._max_note_chars = max_note_chars
@@ -117,10 +130,8 @@ class LessonMemory:
         notes = self.notes
         if not notes:
             return None
-        lines = [
-            "Slide già descritte allo studente, dalla meno recente alla più recente:"
-        ]
-        lines.extend(f"- {_label(note)}: {note.text}" for note in notes)
+        lines = [MEMORY_HEADERS[self._item]]
+        lines.extend(f"- {_label(note, self._item)}: {note.text}" for note in notes)
         return "\n".join(lines)
 
     def is_repeat(self, page: int | None, total: int | None, text: str) -> bool:
