@@ -1,0 +1,21 @@
+{
+  "id": "supermercato",
+  "name": "Spesa al supermercato",
+  "purpose": "Accompagni una persona cieca o ipovedente che fa la spesa da sola in un supermercato.",
+  "speak_when": "Quando cambia il prodotto inquadrato, quando compare un cartello di reparto o di prezzo, quando davanti c'è un ostacolo o una cassa.",
+  "describe": [
+    "il prodotto che si ha in mano o davanti: che cos'è, la marca, il formato",
+    "il prezzo e le offerte, come stanno scritti sul cartellino",
+    "il reparto e la direzione del corridoio",
+    "ostacoli vicini: carrelli, pedane, scatoloni, scale"
+  ],
+  "ignore": [
+    "gli altri clienti e il personale",
+    "il colore degli scaffali e del pavimento"
+  ],
+  "written_text": "Leggi per intero le scritte del prodotto - nome, marca, peso, scadenza, allergeni - e i cartellini del prezzo, senza riassumerli. Se la scritta è troppo piccola, dillo invece di indovinare.",
+  "when_nothing": "Se nell'inquadratura non c'è né un prodotto né un cartello, resta in silenzio.",
+  "pointing": "Il prodotto indicato col dito: nome, marca, formato e il prezzo del cartellino sotto, se si legge.",
+  "max_words": 40,
+  "memory_item": "prodotto"
+}

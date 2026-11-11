@@ -7,13 +7,14 @@ o materiale didattico. Al sistema spetta riferire ciò che è scritto o
 mostrato, che lo studente non vede, e non ciò che il docente sta già dicendo.
 """
 
-from typing import Literal
-
+from vision_caption.core.domain.mode_profile import ModeProfile
 from vision_caption.core.services.caption_pipeline import NOTHING_TO_SAY
 from vision_caption.core.services.lesson_memory import PAGE_TAG
 
 
-CaptionContext = Literal["general", "lesson", "museum"]
+# Le modalità scritte nel codice sono tre; le altre arrivano dai profili e
+# si aggiungono a questi dizionari con register_profile.
+CaptionContext = str
 
 
 AUTO_PROMPTS: dict[str, str] = {
@@ -152,3 +153,85 @@ def auto_prompt(context: CaptionContext) -> str:
 
 def pointing_context(context: CaptionContext) -> str:
     return POINTING_CONTEXT[context]
+
+
+def _bullets(lines: list[str]) -> str:
+    return "\n".join(f"- {line}." for line in lines)
+
+
+def render_auto_prompt(profile: ModeProfile) -> str:
+    """Monta il profilo dentro lo scheletro che la pipeline sa leggere.
+
+    Le righe ``Titolo:``, ``Testo:`` e ``Immagine:``, la riga della pagina e
+    la parola che fa tacere il sistema non vengono dal profilo: sono il
+    formato che la voce e la memoria analizzano a valle. Dal profilo arriva
+    solo il contenuto delle caselle.
+    """
+    ignore = (
+        f"\n\nCOSA NON DIRE MAI:\n{_bullets(profile.ignore)}"
+        if profile.ignore
+        else ""
+    )
+    # La riga della pagina serve solo dove esistono le pagine: in una
+    # modalità di officina o di pesca sarebbe una domanda senza risposta a
+    # ogni fotogramma.
+    page_line = (
+        f"{PAGE_TAG}: numero di pagina visibile (esempio 3/7); scrivi nessuna "
+        "se non c'è. Questa riga non si legge ad alta voce.\n"
+        if profile.memory_item == "slide"
+        else ""
+    )
+    return f"""{profile.purpose} Rispondi in italiano, come una guida accanto alla persona. Poche parole per volta: non superare {profile.max_words} parole, e usane meno quando basta.
+
+STRUTTURA DELLA RISPOSTA, una riga per tipo e solo quelle che servono:
+{page_line}Titolo: il titolo scritto, se c'è.
+Testo: le altre scritte, nell'ordine in cui si leggono.
+Immagine: che cosa si vede, in UNA frase di massimo quattordici parole.
+
+COSA DESCRIVERE, dalla cosa più importante in giù:
+{_bullets(profile.describe)}{ignore}
+
+LE SCRITTE:
+{profile.written_text}
+
+QUANDO PARLARE:
+{profile.speak_when}
+
+QUANDO NON C'È NIENTE DI UTILE:
+{profile.when_nothing} Se non c'è proprio nulla da dire rispondi solo {NOTHING_TO_SAY}.
+
+MEMORIA:
+Ricevi le ultime cose già descritte. Servono a non ripetersi: se è la stessa di prima e non si vede niente di nuovo, rispondi solo {NOTHING_TO_SAY}. Un dettaglio nuovo, invece, va detto.
+
+CONTROLLO FINALE: niente elenchi e niente markdown. Numeri, date e misure scritti in lettere, come si pronunciano. Non descrivere pavimento, pareti e soffitto, e non attribuire alle persone età, aspetto o abbigliamento."""
+
+
+def render_pointing_context(profile: ModeProfile) -> str:
+    """Lo stesso profilo, per il bersaglio indicato col dito."""
+    ignore = (
+        f"\n- Non nominare: {'; '.join(profile.ignore)}."
+        if profile.ignore
+        else ""
+    )
+    return f"""
+Contesto: {profile.purpose}
+PRIMA scegli il bersaglio in base al corridoio, POI classificalo:
+- target_kind=object: un oggetto reale davanti alla persona. Descrivilo in
+  massimo venti parole: che cos'è, il colore, il materiale, lo stato.
+- target_kind=educational_content: un contenuto da leggere - un cartello,
+  un'etichetta, uno schermo, una pagina, un pannello.
+- In entrambi i casi, se sul bersaglio c'è testo leggibile trascrivilo
+  esattamente e per intero in visible_text, anche se è lungo: per chi non
+  vede quel testo è l'informazione principale. Non riassumerlo.
+- Che cosa conta in questa modalità: {profile.pointing}{ignore}
+- Se il bersaglio è troppo piccolo o sfocato per leggerlo, imposta
+  needs_closer_view=true invece di indovinare.
+- Per una persona usa soltanto il termine neutro "persona".
+- target_kind=unknown: bersaglio incerto; chiedi di ripuntare.
+"""
+
+
+def register_profile(profile: ModeProfile) -> None:
+    """Rende disponibile una modalità salvata, come fosse scritta nel codice."""
+    AUTO_PROMPTS[profile.id] = render_auto_prompt(profile)
+    POINTING_CONTEXT[profile.id] = render_pointing_context(profile)

@@ -23,6 +23,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_FRONTEND_DIST_PATH = (
     BACKEND_ROOT.parent / "TESI-Vision_Caption_Client" / "dist"
 )
+# Le modalità create dall'utente: accanto al progetto, non dentro il codice.
+DEFAULT_PROFILES_DIR = BACKEND_ROOT / "profili"
+
 
 
 def resolve_backend_path(value: str | Path) -> Path:
@@ -44,6 +47,7 @@ class ServerSettings(SettingsModel):
     websocket_ping_timeout_seconds: float = Field(default=300.0, gt=0.0)
     websocket_drain_timeout_seconds: float = Field(default=0.005, ge=0.0)
     frontend_dist_path: Path = DEFAULT_FRONTEND_DIST_PATH
+    profiles_dir: Path = DEFAULT_PROFILES_DIR
     log_dir: Path = Path("logs")
     log_level: str = "DEBUG"
     auto_input_fps: float = Field(default=2.0, gt=0.0)
@@ -80,7 +84,10 @@ class VlmSettings(SettingsModel):
     api_key: str = Field(default="", repr=False)
     # "lesson" adatta i prompt allo studio: slide, lavagna e materiale
     # didattico durante una lezione. "general" è l'uso libero della tesi.
-    context: Literal["general", "lesson", "museum"] = "lesson"
+    # Le tre modalità del codice più quelle salvate in PROFILES_DIR: il
+    # controllo che esistano davvero lo fa l'avvio del server, che è l'unico
+    # punto che ha letto la cartella.
+    context: str = "lesson"
     # Con un modello locale il server lo fa caricare all'avvio e aspetta fino
     # a questo tempo prima di accettare utenti. 0 lo disattiva.
     warmup_timeout_seconds: float = Field(default=300.0, ge=0.0)
@@ -386,6 +393,9 @@ class AppSettings(SettingsModel):
                 websocket_optional_send_timeout_seconds=value(
                     "WS_OPTIONAL_SEND_TIMEOUT_SECONDS",
                     0.25,
+                ),
+                profiles_dir=resolve_backend_path(
+                    value("PROFILES_DIR", str(DEFAULT_PROFILES_DIR))
                 ),
                 frontend_dist_path=resolve_backend_path(
                     value("FRONTEND_DIST_PATH", DEFAULT_FRONTEND_DIST_PATH)

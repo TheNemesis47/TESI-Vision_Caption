@@ -353,6 +353,55 @@ Le soglie restano quelle con il prefisso `LESSON_` (`LESSON_MAX_WORDS`,
 `LESSON_MIN_SHARPNESS`, `LESSON_MEMORY_SLIDES`): il prefisso è storico, i
 valori valgono per ogni contesto guidato.
 
+### Modalità create dall'utente
+
+Lezione, museo e generale sono scritte nel codice perché sono quelle tarate
+sui test. Le altre si creano senza toccare il codice: un museo ha chiesto
+una modalità per le sale, ma lo stesso serve a chi lavora in officina, fa la
+spesa o va a pescare, e ognuna di queste situazioni ha cose diverse da dire
+e da tacere.
+
+Una modalità **non è un prompt**: è un profilo con caselle fisse
+(`ModeProfile`, in `core/domain/mode_profile.py`) che il server monta dentro
+uno scheletro immutabile. Lo scheletro è il formato che la pipeline analizza
+a valle — le righe `Titolo:`, `Testo:` e `Immagine:` che diventano voce, la
+riga della pagina che alimenta la memoria, la parola convenuta che fa tacere
+il sistema — e dal profilo arriva solo il contenuto. Un profilo sbagliato fa
+descrivere male; non rompe la voce.
+
+| Casella | Che cosa ci va |
+|---|---|
+| `id` | una parola minuscola: è il nome del file e il valore di `CAPTION_CONTEXT` |
+| `name` | il nome leggibile |
+| `purpose` | a chi serve e in che situazione |
+| `speak_when` | che cosa conta come novità, qui |
+| `describe` | da due a sei cose da dire, dalla più importante in giù |
+| `ignore` | fino a sei cose da non nominare mai |
+| `written_text` | come trattare scritte, etichette e numeri |
+| `when_nothing` | che cosa fare quando non c'è niente di utile |
+| `pointing` | che cosa descrivere quando si indica col dito |
+| `max_words` | da 15 a 60 |
+| `memory_item` | come chiamare una cosa già descritta (`prodotto`, `opera`, `attrezzo`); `slide` è l'unico valore che accende la numerazione delle pagine |
+
+Il profilo lo scrive un modello più grande di quello che descrive le
+immagini, perché è un lavoro di linguaggio che si fa una volta sola mentre
+descrivere i fotogrammi è un lavoro di vista che si fa due volte al secondo:
+
+```bash
+uv run python scripts/crea_modalita.py \
+  "accompagni una persona cieca che va a pescare da riva"
+# Modalità salvata in profili/pesca.json
+# Provala con CAPTION_CONTEXT=pesca
+```
+
+Il modello predefinito è `google/gemini-2.5-pro` e si cambia con
+`--modello <id OpenRouter>`; `--prova` stampa il profilo senza salvarlo.
+Il risultato è un JSON di dieci righe in `profili/`, che si corregge a mano
+senza riscrivere un prompt. `profili/supermercato.json` è l'esempio incluso.
+I file non validi vengono segnalati e saltati all'avvio, e un
+`CAPTION_CONTEXT` che non esiste ferma il server dicendo quali modalità ci
+sono.
+
 `scripts/slide_prova.html` contiene sette slide di prova (titolo, formule,
 grafico a linee, a barre, parabola, tabella, schema) da proiettare a schermo
 intero.

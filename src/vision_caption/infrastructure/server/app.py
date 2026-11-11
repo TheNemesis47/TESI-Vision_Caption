@@ -42,7 +42,7 @@ from vision_caption.adapters.scene.RfdetrSceneDetectorAdapter import RfdetrScene
 from vision_caption.adapters.scene.RfdetrCustomSceneDetectorAdapter import RfdetrCustomSceneDetectorAdapter
 from vision_caption.adapters.scene.HybridSceneDetectorAdapter import HybridSceneDetectorAdapter
 from vision_caption.adapters.vlm.OpenRouterCaptionGenerator import OpenRouterCaptionGenerator
-from vision_caption.adapters.vlm.prompts import auto_prompt
+from vision_caption.adapters.vlm.prompts import auto_prompt, register_profile
 from vision_caption.adapters.vlm.OpenRouterPointingCaptionGenerator import (
     OpenRouterPointingCaptionGenerator,
 )
@@ -51,7 +51,9 @@ from vision_caption.adapters.tts.ElevenLabsSynthesizer import ElevenLabsSynthesi
 from vision_caption.adapters.tts.FishSpeechSynthesizer import FishSpeechSynthesizer
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.services.caption_pipeline import CaptionPipeline
+from vision_caption.core.domain.mode_profile import BUILTIN_CONTEXTS
 from vision_caption.core.services.lesson_memory import LessonMemory
+from vision_caption.infrastructure.mode_profiles import load_profiles
 from vision_caption.core.services.pointing.mode_gesture import (
     ModeGestureDetector,
     ModeGestureSettings,
@@ -130,17 +132,45 @@ class MockSpeechSynthesizer:
 
 # --- APP FACTORY ---
 
+def _memory_item(context: str, profiles: dict) -> str:
+    """La parola con cui la memoria chiama una cosa già descritta."""
+    if context == "museum":
+        return "opera"
+    if context in profiles:
+        return profiles[context].memory_item
+    return "slide"
+
+
 def create_app(settings: AppSettings | None = None) -> FastAPI:
     settings = settings or AppSettings.from_env()
     app = FastAPI(title="Vision Caption WebSocket Server")
     app.state.settings = settings
 
     use_mocks = settings.runtime.use_mocks
+    # Le modalità salvate si aggiungono a quelle del codice prima che
+    # qualcuno chieda il prompt: da qui in giù una modalità creata
+    # dall'utente è indistinguibile da lesson o museum.
+    profiles = load_profiles(settings.server.profiles_dir)
+    for profile in profiles.values():
+        register_profile(profile)
+    if settings.vlm.context not in BUILTIN_CONTEXTS and settings.vlm.context not in profiles:
+        known = ", ".join([*BUILTIN_CONTEXTS, *sorted(profiles)])
+        raise ValueError(
+            f"CAPTION_CONTEXT='{settings.vlm.context}' non esiste. "
+            f"Modalità disponibili: {known}. "
+            f"Le modalità salvate si leggono da {settings.server.profiles_dir}."
+        )
+    if profiles:
+        logger.info(
+            "Modalità salvate caricate: {}", ", ".join(sorted(profiles))
+        )
+
     # Le funzioni pensate per lo studio (memoria di ciò che è già stato
     # descritto, filtro delle foto mosse, simboli letti a parole, gesto di
     # stop) valgono in ogni contesto guidato: a lezione e al museo cambiano i
     # prompt e le parole della memoria, non la meccanica.
-    guided = settings.vlm.context in ("lesson", "museum")
+    guided = settings.vlm.context != "general"
+
     
     if use_mocks:
         logger.info("Initializing server in MOCK MODE (no external dependencies needed)...")
@@ -396,7 +426,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             LessonMemory(
                 max_notes=settings.auto.lesson_memory_slides,
                 max_idle_seconds=settings.auto.lesson_memory_idle_seconds,
-                item="opera" if settings.vlm.context == "museum" else "slide",
+                item=_memory_item(settings.vlm.context, profiles),
             )
             if guided and settings.auto.lesson_memory_slides > 0
             else None

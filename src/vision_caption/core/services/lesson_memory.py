@@ -85,16 +85,28 @@ def slide_title(text: str) -> str | None:
     return " ".join(title.split()) or None
 
 
-# Al museo non ci sono pagine: cambia la parola, non la meccanica.
+# Al museo non ci sono pagine, e in una modalità creata dall'utente non ci
+# sono né pagine né opere: cambia la parola, non la meccanica. Le due
+# conosciute hanno un'intestazione scritta bene; per tutte le altre vale una
+# formula che resta corretta qualunque parola arrivi dal profilo.
 ITEM_LABELS = {"slide": "Slide", "opera": "Opera"}
 MEMORY_HEADERS = {
     "slide": "Slide già descritte allo studente, dalla meno recente alla più recente:",
     "opera": "Opere già raccontate al visitatore, dalla meno recente alla più recente:",
 }
+GENERIC_HEADER = "Già descritto in precedenza, dal meno recente al più recente:"
+
+
+def item_label(item: str) -> str:
+    return ITEM_LABELS.get(item, item.capitalize())
+
+
+def memory_header(item: str) -> str:
+    return MEMORY_HEADERS.get(item, GENERIC_HEADER)
 
 
 def _label(note: SlideNote, item: str = "slide") -> str:
-    word = ITEM_LABELS[item]
+    word = item_label(item)
     if note.page is None:
         return f"{word} senza numero" if item == "slide" else word
     if note.total is None:
@@ -111,9 +123,9 @@ class LessonMemory:
         clock: Callable[[], float] = monotonic,
         item: str = "slide",
     ) -> None:
-        if item not in ITEM_LABELS:
-            raise ValueError(f"item sconosciuto: {item}")
-        self._item = item
+        if not item.strip():
+            raise ValueError("item non può essere vuoto")
+        self._item = item.strip().casefold()
         self._max_notes = max_notes
         self._max_idle_seconds = max_idle_seconds
         self._max_note_chars = max_note_chars
@@ -130,7 +142,7 @@ class LessonMemory:
         notes = self.notes
         if not notes:
             return None
-        lines = [MEMORY_HEADERS[self._item]]
+        lines = [memory_header(self._item)]
         lines.extend(f"- {_label(note, self._item)}: {note.text}" for note in notes)
         return "\n".join(lines)
 

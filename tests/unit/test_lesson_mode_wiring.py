@@ -84,10 +84,10 @@ def test_museum_mode_keeps_the_guided_machinery_with_its_own_words() -> None:
     assert "cartellino" in POINTING_CONTEXT["museum"]
 
 
-def test_every_context_has_its_prompts() -> None:
+def test_every_builtin_context_has_its_prompts() -> None:
     from vision_caption.adapters.vlm.prompts import AUTO_PROMPTS, POINTING_CONTEXT
-    from vision_caption.infrastructure.settings import VlmSettings
-    from typing import get_args
+    from vision_caption.core.domain.mode_profile import BUILTIN_CONTEXTS
 
-    contexts = get_args(VlmSettings.model_fields["context"].annotation)
-    assert set(contexts) == set(AUTO_PROMPTS) == set(POINTING_CONTEXT)
+    for context in BUILTIN_CONTEXTS:
+        assert context in AUTO_PROMPTS
+        assert context in POINTING_CONTEXT
