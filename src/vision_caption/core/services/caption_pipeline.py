@@ -19,6 +19,7 @@ from vision_caption.core.ports.research_recorder_port import (
 from vision_caption.core.ports.hand_pose_estimator_port import HandPoseEstimatorPort
 from vision_caption.core.services.lesson_memory import LessonMemory, split_page_tag
 from vision_caption.core.services.speech_text import has_visual_description
+from vision_caption.core.services.pointing.mode_gesture import ModeGestureDetector
 from vision_caption.core.services.pointing.stop_gesture import StopGestureDetector
 from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
@@ -54,6 +55,7 @@ class CaptionPipeline:
         speech_text: Callable[[str], str] | None = None,
         hand_pose_estimator: HandPoseEstimatorPort | None = None,
         stop_gesture: StopGestureDetector | None = None,
+        mode_gesture: ModeGestureDetector | None = None,
         clock: Callable[[], float] = time.monotonic,
     ):
         self._scene_detector = scene_detector
@@ -68,10 +70,13 @@ class CaptionPipeline:
         self._samples = sample_store or NullCaptionSampleStore()
         self._lesson_memory = lesson_memory
         self._speech_text = speech_text
-        # Il palmo aperto zittisce la voce: serve guardare le mani anche in
-        # AUTO, quindi entrambi o nessuno.
-        self._hand_pose_estimator = hand_pose_estimator if stop_gesture else None
+        # Il palmo aperto zittisce la voce e le due dita a V portano al
+        # puntamento: per entrambi servono le mani anche in AUTO, quindi lo
+        # stimatore e i gesti stanno insieme o non ci sono.
+        watches_hands = stop_gesture is not None or mode_gesture is not None
+        self._hand_pose_estimator = hand_pose_estimator if watches_hands else None
         self._stop_gesture = stop_gesture if hand_pose_estimator else None
+        self._mode_gesture = mode_gesture if hand_pose_estimator else None
         self._clock = clock
         self._last_caption = ""
         self._last_mode: CaptionMode | None = None
@@ -82,6 +87,7 @@ class CaptionPipeline:
         on_detections=None,
         on_pointing_overlay=None,
         on_stop_audio=None,
+        on_mode_switch=None,
     ):
         previous_mode = self._last_mode
         if previous_mode is not None and frame.caption_mode != previous_mode:
@@ -99,6 +105,7 @@ class CaptionPipeline:
             async for result in self._pointing_pipeline.process(
                 frame,
                 on_overlay=on_pointing_overlay,
+                on_mode_switch=on_mode_switch,
             ):
                 yield result
             return
@@ -110,7 +117,9 @@ class CaptionPipeline:
         # Analizziamo la scena per rilevare cambiamenti
         metrics = FrameMetrics(frame_id=frame.frame_id)
 
-        if await self._handle_stop_gesture(frame, metrics, on_stop_audio):
+        if await self._handle_hand_gestures(
+            frame, metrics, on_stop_audio, on_mode_switch
+        ):
             return
 
         logger.debug("Analyzing scene for changes...")
@@ -393,19 +402,45 @@ class CaptionPipeline:
 
         logger.info("Total AUTO streaming frame processing completed.")
 
-    async def _handle_stop_gesture(self, frame: Frame, metrics, on_stop_audio) -> bool:
-        """Vero se il frame mostra il palmo aperto e non va descritto."""
-        if self._stop_gesture is None:
+    async def _handle_hand_gestures(
+        self, frame: Frame, metrics, on_stop_audio, on_mode_switch=None
+    ) -> bool:
+        """Vero se il frame mostra un gesto e per questo non va descritto."""
+        if self._stop_gesture is None and self._mode_gesture is None:
             return False
         pose = await self._hand_pose_estimator.estimate(frame)
-        if self._stop_gesture.update(pose.hands, self._clock()):
+        timestamp = self._clock()
+        if self._mode_gesture is not None and self._mode_gesture.update(
+            pose.hands, timestamp
+        ):
+            logger.info(
+                f"Gesto di modalità sul frame {frame.frame_id}: passo a POINTING."
+            )
+            if on_mode_switch is not None:
+                await on_mode_switch(CaptionMode.POINTING, frame.frame_id)
+            self._research.record(
+                "mode_gesture", frame_id=frame.frame_id,
+                previous=CaptionMode.AUTO.value, current=CaptionMode.POINTING.value,
+            )
+            self._emit_metrics(metrics, "mode_gesture")
+            return True
+        if self._stop_gesture is None:
+            # La mano a V copre comunque la scena: non è un riferimento utile.
+            if self._mode_gesture.sign_visible(pose.hands):
+                self._emit_metrics(metrics, "suppressed_hand")
+                return True
+            return False
+        if self._stop_gesture.update(pose.hands, timestamp):
             logger.info(f"Gesto di stop sul frame {frame.frame_id}: voce interrotta.")
             if on_stop_audio is not None:
                 await on_stop_audio(frame.frame_id)
             self._research.record("stop_gesture", frame_id=frame.frame_id)
             self._emit_metrics(metrics, "stop_gesture")
             return True
-        if self._stop_gesture.palm_visible(pose.hands):
+        if self._stop_gesture.palm_visible(pose.hands) or (
+            self._mode_gesture is not None
+            and self._mode_gesture.sign_visible(pose.hands)
+        ):
             # La mano davanti all'obiettivo copre la slide: descriverla sarebbe
             # inutile, e il frame non deve diventare il nuovo riferimento.
             self._emit_metrics(metrics, "suppressed_hand")

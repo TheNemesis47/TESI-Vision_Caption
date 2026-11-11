@@ -52,6 +52,10 @@ from vision_caption.adapters.tts.FishSpeechSynthesizer import FishSpeechSynthesi
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.services.caption_pipeline import CaptionPipeline
 from vision_caption.core.services.lesson_memory import LessonMemory
+from vision_caption.core.services.pointing.mode_gesture import (
+    ModeGestureDetector,
+    ModeGestureSettings,
+)
 from vision_caption.core.services.speech_text import lesson_speech
 from vision_caption.core.services.pointing.stop_gesture import (
     StopGestureDetector,
@@ -407,6 +411,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 settings=media_pipe_settings
             )
 
+        # Uno solo per connessione: il gesto che porta da AUTO a POINTING è
+        # lo stesso che riporta indietro, e condividerlo evita il rimbalzo.
+        mode_gesture = (
+            ModeGestureDetector(
+                ModeGestureSettings(
+                    hold_seconds=settings.auto.mode_gesture_hold_seconds,
+                )
+            )
+            if settings.auto.mode_gesture
+            else None
+        )
+
         pointing_pipeline = PointingPipeline(
             hand_pose_estimator=hand_pose_estimator,
             gesture_recognizer=PointingGestureRecognizer(
@@ -430,6 +446,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                     settings=replace(media_pipe_settings, mirror_input=True, static_image_mode=True)
                 )
             ) if settings.pointing.mirror_recovery_enabled else None,
+            mode_gesture=mode_gesture,
         )
         return CaptionPipeline(
             scene_detector=scene_detector,
@@ -462,6 +479,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 if guided and settings.auto.lesson_stop_gesture
                 else None
             ),
+            mode_gesture=mode_gesture,
         )
 
     # Lo stato temporale POINTING e il rate limiter nascono per connessione.

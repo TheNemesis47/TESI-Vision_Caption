@@ -21,7 +21,7 @@ class FakePointingPipeline:
         self.reset_calls = 0
         self.closed = False
 
-    async def process(self, frame: Frame, on_overlay=None):
+    async def process(self, frame: Frame, on_overlay=None, on_mode_switch=None):
         self.processed_frames.append(frame)
         if on_overlay is not None:
             await on_overlay((), frame.frame_id, ())

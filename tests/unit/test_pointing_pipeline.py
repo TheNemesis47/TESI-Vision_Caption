@@ -597,3 +597,47 @@ async def test_uncertain_target_gives_actionable_feedback_instead_of_the_guess(f
     results=[r async for r in pipeline.process(_frame())]
     assert results[0].caption==(CLOSER_VIEW_PROMPT if flag=='needs_closer_view' else REPOINT_PROMPT)
     assert 'ipotesi' not in results[0].caption
+
+
+@pytest.mark.asyncio
+async def test_two_fingers_in_pointing_ask_the_phone_to_go_back_to_auto() -> None:
+    """Il gesto di modalità vale nei due versi e non genera un puntamento."""
+    from vision_caption.core.domain.hand_pose import HandPoseResult
+    from vision_caption.core.services.pointing.mode_gesture import (
+        ModeGestureDetector,
+        ModeGestureSettings,
+    )
+
+    from tests.unit.test_mode_gesture import _victory
+
+    class HandEstimator(FakeEstimator):
+        async def estimate(self, frame):
+            self.calls += 1
+            return HandPoseResult(frame_id=frame.frame_id, hands=(_victory(),))
+
+    generator = FakeGenerator(_caption())
+    recognizer = StubRecognizer((_activation(),))
+    now = [0.0]
+    pipeline = PointingPipeline(
+        hand_pose_estimator=HandEstimator(),
+        gesture_recognizer=recognizer,
+        event_gate=PointingEventGate(cooldown_seconds=0.0),
+        image_preparer=FakePreparer(),
+        caption_generator=generator,
+        speech_synthesizer=FakeSpeech(),
+        clock=lambda: now[0],
+        mode_gesture=ModeGestureDetector(ModeGestureSettings(hold_seconds=0.4)),
+    )
+    switches: list[tuple] = []
+
+    async def on_mode_switch(mode, frame_id) -> None:
+        switches.append((mode.value, frame_id))
+
+    first = [r async for r in pipeline.process(_frame(), on_mode_switch=on_mode_switch)]
+    now[0] = 0.5
+    second = [r async for r in pipeline.process(_frame(), on_mode_switch=on_mode_switch)]
+
+    # Il primo frame tiene il gesto, il secondo lo conferma e cambia modalità.
+    assert switches == [("AUTO", _frame().frame_id)]
+    assert second == []
+    assert recognizer.reset_calls >= 1

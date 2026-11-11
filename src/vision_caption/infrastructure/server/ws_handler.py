@@ -131,6 +131,18 @@ async def vision_websocket(websocket: WebSocket) -> None:
         # Non opzionale: se il telefono non lo riceve, la voce continua.
         await websocket.send_json({"type": "stop_audio", "frame_id": frame_id})
 
+    async def send_mode_switch(mode: CaptionMode, frame_id: int) -> None:
+        # Non opzionale: è il telefono a decidere la modalità dei frame, e se
+        # perde questo messaggio il gesto dell'utente non ha alcun effetto.
+        await websocket.send_json(
+            {
+                "type": "mode_switch",
+                "frame_id": frame_id,
+                "mode": mode.value,
+                "min_frame_interval_ms": frame_interval_ms(mode),
+            }
+        )
+
     def frame_interval_ms(mode: CaptionMode) -> int:
         fps = (
             settings.server.auto_input_fps
@@ -198,6 +210,7 @@ async def vision_websocket(websocket: WebSocket) -> None:
                     on_detections=send_detections,
                     on_pointing_overlay=send_pointing_overlay,
                     on_stop_audio=send_stop_audio,
+                    on_mode_switch=send_mode_switch,
                 ):
                     has_audio = True
                     audio_base64 = base64.b64encode(

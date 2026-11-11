@@ -217,6 +217,10 @@ class AutoCaptionSettings(SettingsModel):
     # A lezione la mano aperta davanti alla fotocamera ferma la voce.
     lesson_stop_gesture: bool = True
     lesson_stop_hold_seconds: float = Field(default=0.4, ge=0.0)
+    # Le due dita a V passano da automatica a puntamento e viceversa, in
+    # ogni contesto: chi non vede non cerca un pulsante sullo schermo.
+    mode_gesture: bool = True
+    mode_gesture_hold_seconds: float = Field(default=0.7, ge=0.0)
 
 
 class MediaPipeSettings(SettingsModel):
@@ -498,6 +502,8 @@ class AppSettings(SettingsModel):
                 lesson_max_words=value("LESSON_MAX_WORDS", 50),
                 lesson_stop_gesture=value("LESSON_STOP_GESTURE", True),
                 lesson_stop_hold_seconds=value("LESSON_STOP_HOLD_SECONDS", 0.4),
+                mode_gesture=value("MODE_GESTURE", True),
+                mode_gesture_hold_seconds=value("MODE_GESTURE_HOLD_SECONDS", 0.7),
             ),
             pointing=PointingSettings(
                 mirror_recovery_enabled=value("POINTING_MIRROR_RECOVERY", False),

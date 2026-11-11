@@ -324,6 +324,7 @@ sotto). Rispetto a `general` cambiano soltanto in questi contesti guidati:
 | Voce | frasi discorsive, etichette interne non lette; simboli letti a parole (x², ±, √, ≥); testo prima delle figure, con quota riservata alle immagini entro lo stesso tetto | `LESSON_MAX_WORDS` |
 | Puntamento | contesto delle slide nel prompt; il testo scritto sul bersaglio viene sempre letto, anche lungo e anche sugli oggetti reali (etichette, confezioni, cartelli); un'etichetta già citata nella descrizione non si ripete, una formula si legge solo a parole, i valori di un grafico in fila no | — |
 | Gesto di stop | la mano aperta davanti alla fotocamera, tenuta un attimo, ferma subito la voce sul telefono; il frame con la mano non viene descritto | `LESSON_STOP_GESTURE`, `LESSON_STOP_HOLD_SECONDS` |
+| Gesto di cambio modalità | indice e medio tesi a V, tenuti un attimo, passano da automatica a puntamento e viceversa senza toccare lo schermo; il server lo comunica al telefono con un messaggio `mode_switch`. È l'unica riga di questa tabella che vale anche in `general` | `MODE_GESTURE`, `MODE_GESTURE_HOLD_SECONDS` |
 
 Le descrizioni mirano a venti-trenta parole, meno per le slide semplici.
 Il titolo viene detto una volta; seguono le altre scritte e una frase breve

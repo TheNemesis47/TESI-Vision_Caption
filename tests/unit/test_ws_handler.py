@@ -69,6 +69,7 @@ class OverlayPipeline(FakePipeline):
         on_detections,
         on_pointing_overlay,
         on_stop_audio=None,
+        on_mode_switch=None,
     ):
         await on_pointing_overlay(
             (
@@ -96,6 +97,25 @@ class OverlayPipeline(FakePipeline):
             yield
 
 
+class ModeSwitchPipeline(FakePipeline):
+    """Una pipeline che riconosce il gesto e chiede al telefono di cambiare."""
+
+    async def process(
+        self,
+        frame,
+        *,
+        on_detections,
+        on_pointing_overlay,
+        on_stop_audio=None,
+        on_mode_switch=None,
+    ):
+        from vision_caption.core.domain.frame import CaptionMode
+
+        await on_mode_switch(CaptionMode.POINTING, frame.frame_id)
+        if False:
+            yield
+
+
 class DetectionPipeline(FakePipeline):
     async def process(
         self,
@@ -104,6 +124,7 @@ class DetectionPipeline(FakePipeline):
         on_detections,
         on_pointing_overlay,
         on_stop_audio=None,
+        on_mode_switch=None,
     ):
         await on_detections(
             [
@@ -271,3 +292,20 @@ async def test_slow_detection_is_dropped_without_blocking_frame_done() -> None:
         "frame_done",
     ]
     assert websocket.sent_messages[-1]["min_frame_interval_ms"] == 500
+
+
+@pytest.mark.asyncio
+async def test_websocket_tells_the_phone_to_change_mode_after_the_gesture() -> None:
+    pipeline = ModeSwitchPipeline()
+    websocket = OneFrameWebSocket(pipeline)
+
+    await vision_websocket(websocket)
+
+    switch = next(
+        item for item in websocket.sent_messages if item["type"] == "mode_switch"
+    )
+    assert switch["mode"] == "POINTING"
+    assert switch["frame_id"] == 42
+    # Il telefono deve anche sapere a che ritmo mandare i frame della nuova
+    # modalità: POINTING vuole dieci al secondo, AUTO due.
+    assert switch["min_frame_interval_ms"] == 100

@@ -39,6 +39,9 @@ from vision_caption.core.services.lesson_memory import LessonMemory
 from vision_caption.core.services.pointing.gesture_recognizer import (
     PointingGestureRecognizer,
 )
+from vision_caption.core.services.pointing.mode_gesture import (
+    ModeGestureDetector,
+)
 from vision_caption.core.services.pointing.pointing_event_gate import (
     PointingEventGate,
 )
@@ -198,6 +201,7 @@ class PointingPipeline:
         speech_text: Callable[[str], str] | None = None,
         diagnostics_enabled: bool = False,
         recovery_pose_estimator: HandPoseEstimatorPort | None = None,
+        mode_gesture: ModeGestureDetector | None = None,
     ) -> None:
         self._hand_pose_estimator = hand_pose_estimator
         self._recovery_pose_estimator = recovery_pose_estimator
@@ -214,6 +218,9 @@ class PointingPipeline:
         self._lesson_memory = lesson_memory
         self._speech_text = speech_text
         self._diagnostics_enabled = diagnostics_enabled
+        # Lo stesso riconoscitore della modalità automatica, condiviso dalla
+        # connessione: la mano tenuta alzata dopo lo scatto non rimbalza.
+        self._mode_gesture = mode_gesture
         self._previous_pose_timestamp: float | None = None
 
     async def process(
@@ -224,6 +231,7 @@ class PointingPipeline:
             Awaitable[None],
         ]
         | None = None,
+        on_mode_switch: Callable[[object, int], Awaitable[None]] | None = None,
     ) -> AsyncIterator[CaptionResult]:
         pose_started_at = perf_counter()
         pose_result = await self._hand_pose_estimator.estimate(frame)
@@ -247,6 +255,22 @@ class PointingPipeline:
                 pose_result = recovered
         pose_ms = round((perf_counter()-pose_started_at)*1000, 1)
         timestamp = self._clock()
+        if self._mode_gesture is not None and self._mode_gesture.update(
+            pose_result.hands, timestamp
+        ):
+            from vision_caption.core.domain.frame import CaptionMode
+
+            logger.info(
+                "Gesto di modalità sul frame {}: torno in AUTO.", frame.frame_id
+            )
+            self._research.record(
+                "mode_gesture", frame_id=frame.frame_id,
+                previous=CaptionMode.POINTING.value, current=CaptionMode.AUTO.value,
+            )
+            if on_mode_switch is not None:
+                await on_mode_switch(CaptionMode.AUTO, frame.frame_id)
+            self._gesture_recognizer.reset()
+            return
         recognition = self._gesture_recognizer.update(
             pose_result.hands,
             timestamp=timestamp,
