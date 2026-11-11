@@ -116,6 +116,8 @@ intercetta. Basta attraversarne una parte, non occorre colpirne il centro.
 Ignora la mano e chi punta. Non scegliere un oggetto laterale fuori dal
 corridoio solo perché è più evidente. Se due oggetti sono equivalenti,
 usa il nome comune senza inventare particolari. Per una persona usa persona.
+Se sul bersaglio c'è testo leggibile - etichetta, cartello, confezione,
+titolo, riga di una slide - trascrivilo esattamente in visible_text.
 Può essere un oggetto reale oppure il contenuto di una slide: una lezione
 non obbliga a scegliere una slide. Descrivi oggetto e colori certi in massimo
 venti parole. Non descrivere l'ambiente né testi estranei al bersaglio.
@@ -123,7 +125,8 @@ Rispondi solo JSON, senza copiare un elenco di proprietà o uno schema:
 {{"target_kind":"object o educational_content o unknown",
 "target":"nome del bersaglio oppure null",
 "description":"frase breve concreta oppure stringa vuota",
-"visible_text":null,"text_complete":false,"text_confidence":0.0,
+"visible_text":"testo esatto sul bersaglio oppure null",
+"text_complete":false,"text_confidence":0.0,
 "confidence":0.0,"needs_repointing":false,"needs_closer_view":false}}
 Se non puoi riconoscere alcun bersaglio, needs_repointing=true.
 """

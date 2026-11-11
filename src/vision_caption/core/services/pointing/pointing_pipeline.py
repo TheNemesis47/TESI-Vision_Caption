@@ -87,6 +87,10 @@ def compose_accessibility_caption(
         return object_caption or None
     if not object_caption:
         return f"C'è scritto: {visible_text}"
+    # "un dispositivo con la scritta KIWI. C'è scritto: KIWI": la descrizione
+    # ha già letto l'etichetta, ripeterla fa perdere tempo a chi ascolta.
+    if visible_text.casefold() in object_caption.casefold():
+        return object_caption
 
     separator = (
         " " if object_caption.endswith((".", "!", "?", ":")) else ". "
@@ -94,11 +98,23 @@ def compose_accessibility_caption(
     return f"{object_caption}{separator}C'è scritto: {visible_text}"
 
 
-# A lezione il testo letto sul bersaglio si legge solo se è breve: una
-# formula, una riga, un'etichetta. Le etichette di un grafico in fila ("60 57
-# 47 1950 1970") non aiutano, la descrizione del grafico sì.
-LESSON_MAX_VISIBLE_LINES = 2
-LESSON_MAX_VISIBLE_WORDS = 20
+# Il testo scritto sul bersaglio si legge sempre, a lezione come fuori: è
+# esattamente ciò che chi non vede non può procurarsi da solo, e vale sia per
+# una riga di slide sia per l'etichetta di una scatola. L'unica eccezione
+# sono i valori di un grafico in fila ("60 57 47 1950 1970"): da soli non
+# dicono nulla e al loro posto si legge la descrizione della figura.
+_LABEL_DUMP_MIN_LINES = 3
+_LABEL_DUMP_NUMBER_RATIO = 0.4
+_NUMBER_TOKEN = re.compile(r"^[\d.,%°/()-]*\d[\d.,%°/()-]*$")
+
+
+def _is_label_dump(lines: list[str]) -> bool:
+    """Valori di assi o di legenda messi in colonna, senza una frase."""
+    tokens = " ".join(lines).split()
+    if len(lines) < _LABEL_DUMP_MIN_LINES or not tokens:
+        return False
+    numbers = sum(1 for token in tokens if _NUMBER_TOKEN.match(token))
+    return numbers / len(tokens) >= _LABEL_DUMP_NUMBER_RATIO
 _FORMULA_SIGNS = re.compile(r"[=+^²³√±≤≥<>∫∑π]")
 _GENERIC_SLIDE_DESCRIPTION = re.compile(
     r"(?i)^(?:testo|blocco di testo|etichetta)"
@@ -121,12 +137,7 @@ def compose_lesson_caption(caption: PointingCaption) -> str | None:
         # Il frame 799 aveva OCR "deogioco" dal titolo tagliato: si conserva
         # la descrizione del bersaglio senza leggere parole incomplete.
         return description
-    readable = (
-        visible_text
-        and len(lines) <= LESSON_MAX_VISIBLE_LINES
-        and len(visible_text.split()) <= LESSON_MAX_VISIBLE_WORDS
-    )
-    if not readable:
+    if not visible_text or (description and _is_label_dump(lines)):
         return description or target or None
     if _GENERIC_SLIDE_DESCRIPTION.fullmatch(description):
         return visible_text

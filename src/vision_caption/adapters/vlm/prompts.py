@@ -74,13 +74,19 @@ PRIMA scegli il bersaglio in base al corridoio, POI classificalo:
   una bottiglia o un computer. Descrivi direttamente l'oggetto e i suoi
   dettagli visibili; non trasformarlo in una figura della presentazione.
   Ignora la memoria delle slide. Non descrivere l'ambiente o le superfici.
+  Se sull'oggetto c'è del testo leggibile - un'etichetta, una confezione, un
+  cartello, una targa, un display, il tasto di un telecomando, la copertina
+  di un libro - trascrivilo esattamente in visible_text, anche quando è
+  lungo: per chi non vede quel testo è l'informazione principale.
 - target_kind=educational_content: contenuto dentro una slide proiettata,
   la lavagna, uno schermo, un libro o un foglio. La sola presenza di una
   slide nella scena non basta: il corridoio deve intercettarne il contenuto.
   In quel caso il bersaglio è il blocco di
 contenuto indicato (un titolo, una riga, un elenco, una formula, un grafico),
 non lo schermo o la lavagna intera.
-- Testo: trascrivi in visible_text esattamente il blocco indicato.
+- Testo: trascrivi in visible_text esattamente il blocco indicato, per
+  intero, anche se occupa più righe: non riassumerlo e non sostituirlo con
+  una descrizione del tipo "una citazione" o "un blocco di testo".
   Se basta il testo, lascia description vuota: non anteporre testo sulla
   slide proiettata, pannello o schermo. La voce deve partire dal contenuto.
 - Formula: in visible_text la forma scritta, in description la lettura a

@@ -482,6 +482,70 @@ def test_lesson_pointing_does_not_read_incomplete_text_from_outside_the_picture(
     assert compose_lesson_caption(caption) == "immagine di una cabina arcade viola"
 
 
+def test_lesson_pointing_reads_a_long_text_instead_of_naming_it() -> None:
+    """Sessione d0068e48c5ce: la frase a parete era trascritta ma non letta."""
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+
+    caption = _lesson_caption(
+        target_kind="educational_content", target="testo decorativo",
+        description="testo decorativo a parete con una citazione sull'amore e la famiglia",
+        visible_text="la più\nbella\ncosa\nche ci sia\nè una famiglia\nche si amiamo.",
+        text_complete=True,
+    )
+
+    assert compose_lesson_caption(caption) == (
+        "la più, bella, cosa, che ci sia, è una famiglia, che si amiamo. "
+        "testo decorativo a parete con una citazione sull'amore e la famiglia"
+    )
+
+
+def test_lesson_pointing_reads_the_whole_label_of_a_real_object() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+
+    caption = _lesson_caption(
+        target_kind="object", target="scatola di medicinali",
+        description="una scatola bianca e verde",
+        visible_text="TACHIPIRINA 500 mg\ncompresse\nparacetamolo\n20 compresse",
+        text_complete=True,
+    )
+
+    assert compose_lesson_caption(caption) == (
+        "una scatola bianca e verde. C'è scritto: TACHIPIRINA 500 mg\n"
+        "compresse\nparacetamolo\n20 compresse"
+    )
+
+
+def test_pointing_does_not_repeat_a_label_already_in_the_description() -> None:
+    """Replay 9354113f2536/506: "con la scritta KIWI. C'è scritto: KIWI"."""
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+
+    caption = _lesson_caption(
+        target_kind="object", target="dispositivo elettronico",
+        description="un dispositivo elettronico verde scuro con la scritta KIWI",
+        visible_text="KIWI", text_complete=True,
+    )
+
+    assert compose_lesson_caption(caption) == (
+        "un dispositivo elettronico verde scuro con la scritta KIWI"
+    )
+
+
+def test_lesson_pointing_reads_a_paragraph_longer_than_twenty_words() -> None:
+    from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
+
+    testo = (
+        "La realtà virtuale permette di ricreare ambienti sicuri in cui la "
+        "persona anziana può muoversi, esplorare e ritrovare ricordi senza "
+        "rischi fisici."
+    )
+    caption = _lesson_caption(
+        target_kind="educational_content", target="paragrafo",
+        description="blocco di testo", visible_text=testo, text_complete=True,
+    )
+
+    assert compose_lesson_caption(caption) == testo
+
+
 def test_pointed_picture_keeps_even_a_short_description_after_its_text() -> None:
     from vision_caption.core.services.pointing.pointing_pipeline import compose_lesson_caption
     caption = _lesson_caption(
