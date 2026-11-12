@@ -52,6 +52,9 @@ from vision_caption.adapters.tts.FishSpeechSynthesizer import FishSpeechSynthesi
 from vision_caption.core.services.rate_limiter import RateLimiter
 from vision_caption.core.services.caption_pipeline import CaptionPipeline
 from vision_caption.core.domain.mode_profile import BUILTIN_CONTEXTS
+from vision_caption.core.services.described_scene_cache import (
+    DescribedSceneCache,
+)
 from vision_caption.core.services.lesson_memory import LessonMemory
 from vision_caption.infrastructure.mode_profiles import load_profiles
 from vision_caption.core.services.pointing.mode_gesture import (
@@ -476,6 +479,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             if guided_context and settings.auto.lesson_memory_slides > 0
             else None
         )
+        # L'audio già pronunciato delle slide ricordate: tornare indietro
+        # risente quella voce invece di tacere. Una cache per connessione,
+        # come la memoria a cui si appoggia.
+        scene_cache = (
+            DescribedSceneCache(
+                max_entries=settings.auto.lesson_memory_slides + 1
+            )
+            if lesson_memory is not None
+            else None
+        )
         # Quante parole è una scelta di chi ascolta: la fabbrica resta a
         # disposizione della pipeline, che rifà il filtro quando la scelta
         # cambia a sessione aperta.
@@ -548,6 +561,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             research_recorder=research_recorder,
             sample_store=sample_store,
             lesson_memory=lesson_memory,
+            scene_cache=scene_cache,
             speech_text=speech_text,
             speech_text_factory=speech_text_factory,
             # Lo stesso stimatore delle mani del puntamento: MediaPipe vuole

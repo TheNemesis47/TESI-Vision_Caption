@@ -489,6 +489,9 @@ async def test_auto_strips_the_page_and_passes_memory_to_the_model() -> None:
 
 @pytest.mark.asyncio
 async def test_auto_stays_silent_on_a_slide_already_described() -> None:
+    # Senza la cache della voce il comportamento resta quello di prima: si
+    # tace. Serve come rete, perché una cache assente o vuota non deve
+    # cambiare niente.
     from vision_caption.core.services.lesson_memory import LessonMemory
 
     class RepeatingGenerator:
@@ -539,3 +542,114 @@ def test_sample_carries_build_and_model_without_needing_the_research_log(tmp_pat
     saved=json.loads((tmp_path/'pointing_000008/caption.json').read_text())
     assert all(saved[key]==value for key,value in meta.items())
     assert saved['outcome']=='empty_caption'
+
+
+@pytest.mark.asyncio
+async def test_tornare_su_una_slide_gia_descritta_risente_quella_voce() -> None:
+    """Il buco che la cache chiude: prima qui c'era silenzio."""
+    from vision_caption.core.services.described_scene_cache import (
+        DescribedSceneCache,
+    )
+    from vision_caption.core.services.lesson_memory import LessonMemory
+
+    class RepeatingGenerator:
+        def __init__(self) -> None:
+            self.answers = iter(
+                [
+                    "PAGINA: 4/7\nTitolo: Fonti di energia (%). Gas 45, rinnovabili 30.",
+                    "PAGINA: 4/7\nTitolo: Fonti di energia. Barre: gas e rinnovabili.",
+                ]
+            )
+
+        async def generate(self, frame, context=None):
+            yield next(self.answers)
+
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    recorder = MemoryRecorder()
+    synthesizer = FakeSpeechSynthesizer()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=RepeatingGenerator(),
+        speech_synthesizer=synthesizer,
+        rate_limiter=rate_limiter,
+        research_recorder=recorder,
+        lesson_memory=LessonMemory(),
+        scene_cache=DescribedSceneCache(),
+    )
+
+    first = [result async for result in pipeline.process(_auto_frame(1))]
+    second = [result async for result in pipeline.process(_auto_frame(2))]
+
+    assert len(first) == 1
+    # Avviso breve e poi la descrizione di prima: chi non vede deve sapere
+    # che è una ripetizione, non una slide nuova.
+    assert [result.caption for result in second] == [
+        "Già descritta.",
+        first[0].caption,
+    ]
+    assert second[1].audio.audio_bytes == first[0].audio.audio_bytes
+    (richiamata,) = recorder.named("scene_recalled")
+    assert richiamata["page"] == 4
+    assert richiamata["saved"] == "tts"
+    # La ripetizione vale come una descrizione: senza questo la stessa slide
+    # tornerebbe a parlare a ogni fotogramma.
+    rate_limiter.record.assert_called()
+    scene_detector.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_l_avviso_di_ripetizione_si_sintetizza_una_volta_per_sessione() -> None:
+    from vision_caption.core.domain.audio import Audio, AudioFormat
+    from vision_caption.core.services.described_scene_cache import (
+        DescribedSceneCache,
+    )
+    from vision_caption.core.services.lesson_memory import LessonMemory
+
+    class RecordingSynthesizer:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def synthesize(self, text: str) -> Audio:
+            self.calls.append(text)
+            return Audio(
+                audio_format=AudioFormat.WAV,
+                audio_bytes=text.encode(),
+                audio_duration=0.5,
+            )
+
+    class RepeatingGenerator:
+        async def generate(self, frame, context=None):
+            yield "PAGINA: 2/5\nTitolo: Una sola slide. Testo uguale ogni volta."
+
+    scene_detector = Mock(spec=SceneDetectorPort)
+    scene_detector.analyze = AsyncMock(
+        return_value=SceneAnalysisResult(is_change=True)
+    )
+    scene_detector.commit = AsyncMock()
+    rate_limiter = Mock(spec=RateLimiter)
+    rate_limiter.can_execute.return_value = True
+    synthesizer = RecordingSynthesizer()
+    pipeline = CaptionPipeline(
+        scene_detector=scene_detector,
+        caption_generator=RepeatingGenerator(),
+        speech_synthesizer=synthesizer,
+        rate_limiter=rate_limiter,
+        lesson_memory=LessonMemory(),
+        scene_cache=DescribedSceneCache(),
+    )
+
+    for frame_id in (1, 2, 3):
+        [result async for result in pipeline.process(_auto_frame(frame_id))]
+
+    # Una sintesi per la descrizione, una per l'avviso, e basta: le
+    # ripetizioni successive non chiedono più niente al servizio vocale.
+    assert synthesizer.calls == [
+        "Titolo: Una sola slide. Testo uguale ogni volta.",
+        "Già descritta.",
+    ]

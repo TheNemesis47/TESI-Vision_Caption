@@ -23,6 +23,9 @@ from vision_caption.core.services.pointing.mode_gesture import ModeGestureDetect
 from vision_caption.core.services.pointing.stop_gesture import StopGestureDetector
 from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
+from vision_caption.core.services.described_scene_cache import (
+    DescribedSceneCache,
+)
 from vision_caption.core.services.session_preferences import SessionPreferences
 from vision_caption.core.domain.frame import Frame, CaptionMode
 from vision_caption.core.domain.captionResult import CaptionResult
@@ -33,6 +36,12 @@ from vision_caption.core.services.pointing.pointing_pipeline import (
 # Risposta con cui il modello dichiara che non c'è nulla di utile da dire:
 # il sistema tace invece di descrivere una stanza qualsiasi.
 NOTHING_TO_SAY = "NIENTE"
+
+# L'avviso che precede una descrizione già sentita. Breve perché chi
+# riconosce la frase la interrompe subito, e perché dirlo è l'unico modo in
+# cui chi non vede capisce di essere tornato su una slide di prima invece di
+# trovarsi davanti a un'applicazione che non risponde.
+RECALL_CUE = "Già descritta."
 
 
 def _is_nothing_to_say(text: str) -> bool:
@@ -53,6 +62,9 @@ class CaptionPipeline:
         research_recorder: ResearchRecorderPort | None = None,
         sample_store: CaptionSampleStorePort | None = None,
         lesson_memory: LessonMemory | None = None,
+        # L'audio già pronunciato delle slide in memoria: tornare indietro
+        # risente quella voce invece di tacere.
+        scene_cache: DescribedSceneCache | None = None,
         speech_text: Callable[[str], str] | None = None,
         # Da quante parole si costruisce il filtro della voce. Serve per
         # rifarlo quando chi ascolta cambia la verbosità a sessione aperta.
@@ -73,6 +85,7 @@ class CaptionPipeline:
         self._research = research_recorder or NullResearchRecorder()
         self._samples = sample_store or NullCaptionSampleStore()
         self._lesson_memory = lesson_memory
+        self._scene_cache = scene_cache
         self._speech_text = speech_text
         self._speech_text_factory = speech_text_factory
         # Il palmo aperto zittisce la voce e le due dita a V portano al
@@ -115,6 +128,24 @@ class CaptionPipeline:
             changed["min_interval_seconds"] = interval
 
         return changed
+
+    async def _recall_cue(self):
+        """L'avviso che precede una ripetizione, sintetizzato una volta sola.
+
+        Se il servizio vocale non risponde si risente comunque la
+        descrizione: meglio una ripetizione senza avviso che nessuna voce.
+        """
+        if self._scene_cache is None:
+            return None
+        if self._scene_cache.cue is not None:
+            return self._scene_cache.cue
+        try:
+            cue = await self._speech_synthesizer.synthesize(RECALL_CUE)
+        except Exception:
+            logger.warning("Avviso di ripetizione non sintetizzato.")
+            return None
+        self._scene_cache.remember_cue(cue)
+        return cue
 
     async def process(
         self,
@@ -306,21 +337,70 @@ class CaptionPipeline:
                 if self._speech_text is not None:
                     chunk_text = self._speech_text(chunk_text)
 
-                if self._lesson_memory is not None and self._lesson_memory.is_repeat(
-                    slide_page, slide_total, chunk_text
-                ):
+                repeated = (
+                    self._lesson_memory.find_repeat(
+                        slide_page, slide_total, chunk_text
+                    )
+                    if self._lesson_memory is not None
+                    else None
+                )
+                if repeated is not None:
+                    # Qui si tornava a tacere: il modello era stato pagato e
+                    # chi ascoltava non sentiva niente, senza sapere se la
+                    # slide era stata riconosciuta o se l'app si era rotta.
+                    recalled = (
+                        self._scene_cache.find(repeated.text)
+                        if self._scene_cache is not None
+                        else None
+                    )
                     generated.append(
-                        {"text": chunk_text, "spoken": False,
+                        {"text": chunk_text, "spoken": recalled is not None,
                          "reason": "same_slide", "page": slide_page,
                          "total": slide_total}
                     )
+                    if recalled is None:
+                        self._research.record(
+                            "utterance_skipped",
+                            mode=CaptionMode.AUTO.value,
+                            frame_id=frame.frame_id,
+                            reason="same_slide",
+                            page=slide_page,
+                            text=chunk_text,
+                        )
+                        continue
+
+                    # Una ripetizione vale come una descrizione: segna il
+                    # cooldown e sposta la linea di confronto, altrimenti la
+                    # stessa slide tornerebbe a parlare ogni mezzo secondo.
+                    if metrics.chunks_emitted == 0:
+                        await self._scene_detector.commit()
+                        self._rate_limiter.record()
+                    metrics.chunks_emitted += 1
+                    self._last_caption = repeated.text
                     self._research.record(
-                        "utterance_skipped",
+                        "scene_recalled",
                         mode=CaptionMode.AUTO.value,
                         frame_id=frame.frame_id,
-                        reason="same_slide",
                         page=slide_page,
-                        text=chunk_text,
+                        text=repeated.text,
+                        audio_duration_s=round(recalled.audio_duration, 3),
+                        # Quanto si è risparmiato: la sintesi non è stata
+                        # chiesta, e il modello sì - la sua chiamata si
+                        # risparmia solo con una chiave visiva, che oggi non
+                        # è misurabile.
+                        saved="tts",
+                    )
+                    cue = await self._recall_cue()
+                    if cue is not None:
+                        yield CaptionResult(
+                            frame_id=frame.frame_id,
+                            caption=RECALL_CUE,
+                            audio=cue,
+                        )
+                    yield CaptionResult(
+                        frame_id=frame.frame_id,
+                        caption=repeated.text,
+                        audio=recalled,
                     )
                     continue
 
@@ -399,10 +479,18 @@ class CaptionPipeline:
                     {"text": chunk_text, "spoken": True,
                      "page": slide_page, "total": slide_total}
                 )
+                if self._scene_cache is not None:
+                    self._scene_cache.remember(chunk_text, audio_result)
                 if self._lesson_memory is not None:
                     self._lesson_memory.remember(
                         slide_page, slide_total, chunk_text
                     )
+                    # La cache segue la finestra della memoria: l'audio di una
+                    # slide che non è più ricordata non verrebbe mai richiesto.
+                    if self._scene_cache is not None:
+                        self._scene_cache.keep_only(
+                            note.text for note in self._lesson_memory.notes
+                        )
                     self._research.record(
                         "slide_described",
                         frame_id=frame.frame_id,

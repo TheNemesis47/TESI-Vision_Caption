@@ -147,15 +147,25 @@ class LessonMemory:
         return "\n".join(lines)
 
     def is_repeat(self, page: int | None, total: int | None, text: str) -> bool:
-        """Vero se la slide è già stata descritta e non ha contenuti nuovi.
+        """Vero se la slide è già stata descritta e non ha contenuti nuovi."""
+        return self.find_repeat(page, total, text) is not None
+
+    def find_repeat(
+        self, page: int | None, total: int | None, text: str
+    ) -> SlideNote | None:
+        """Quale slide già descritta è questa, se è una di quelle.
 
         Il testo da solo non basta: lo stesso grafico descritto due volte può
         avere parole diversissime. Contano il numero di pagina e, quando
         manca, il titolo dell'ultima slide descritta.
+
+        Restituisce la nota e non soltanto un sì: chi chiama ha bisogno di
+        sapere *quale* slide era, per ritrovare la voce già pronunciata
+        invece di tacere.
         """
         notes = self.notes
         if not notes:
-            return False
+            return None
         previous: SlideNote | None = None
         if page is not None:
             previous = next(
@@ -177,18 +187,20 @@ class LessonMemory:
             ).ratio() >= SAME_TITLE_SIMILARITY:
                 previous = notes[-1]
         if previous is None:
-            return False
+            return None
         # Un numero di pagina può essere letto male o inventato: due titoli
         # chiaramente diversi sono due slide, qualunque numero porti la pagina.
         title, previous_title = slide_title(text), slide_title(previous.text)
         if title and previous_title and SequenceMatcher(
             None, title, previous_title
         ).ratio() < DIFFERENT_TITLE_SIMILARITY:
-            return False
+            return None
         if has_visual_description(text) and not has_visual_description(previous.text):
             # La figura prima omessa è contenuto nuovo anche quando è breve.
-            return False
-        return len(text.split()) < NEW_CONTENT_GROWTH * len(previous.text.split())
+            return None
+        if len(text.split()) < NEW_CONTENT_GROWTH * len(previous.text.split()):
+            return previous
+        return None
 
     def remember(self, page: int | None, total: int | None, text: str) -> None:
         self._forget_if_idle()
