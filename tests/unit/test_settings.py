@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -5,6 +7,7 @@ from vision_caption.infrastructure.settings import (
     AppSettings,
     BACKEND_ROOT,
     PointingCorridorSettings,
+    _backend_root,
 )
 
 
@@ -176,3 +179,34 @@ def test_pointing_recovery_defaults_and_retry_switch():
     changed=AppSettings.from_env({'POINTING_MIRROR_RECOVERY':'true','POINTING_VLM_RETRY_EMPTY':'false'})
     assert changed.pointing.mirror_recovery_enabled
     assert not changed.pointing.vlm.retry_empty_response
+
+
+def test_backend_root_is_the_project_directory_in_development() -> None:
+    # Tre livelli sopra il file delle impostazioni: la cartella che contiene
+    # src, models e profili.
+    radice = _backend_root(
+        Path("/casa/progetto/src/vision_caption/infrastructure/settings.py")
+    )
+
+    assert radice == Path("/casa/progetto")
+
+
+def test_backend_root_is_the_working_directory_when_installed() -> None:
+    # Nell'immagine il pacchetto sta in site-packages: tre livelli sopra c'è
+    # la libreria di Python, e `profili` finirebbe dentro l'ambiente virtuale
+    # invece che nella cartella montata dal contenitore.
+    radice = _backend_root(
+        Path(
+            "/app/.venv/lib/python3.14/site-packages/vision_caption"
+            "/infrastructure/settings.py"
+        ),
+        Path("/app"),
+    )
+
+    assert radice == Path("/app")
+
+
+def test_profiles_dir_defaults_next_to_the_project() -> None:
+    settings = AppSettings.from_env({})
+
+    assert settings.server.profiles_dir == (BACKEND_ROOT / "profili").resolve()

@@ -19,7 +19,28 @@ from pydantic import (
 )
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[3]
+def _backend_root(
+    module_path: Path | None = None,
+    working_dir: Path | None = None,
+) -> Path:
+    """La cartella da cui si risolvono i percorsi relativi del .env.
+
+    In sviluppo questo file sta in ``src/vision_caption/infrastructure``: tre
+    livelli sopra c'è la radice del progetto, accanto a ``models`` e
+    ``profili``. Dentro l'immagine però il pacchetto è installato in
+    ``site-packages``, e tre livelli sopra c'è la libreria di Python: i
+    percorsi relativi finirebbero dentro l'ambiente virtuale invece che nelle
+    cartelle montate dal contenitore, e le modalità salvate non si
+    troverebbero. In quel caso la radice è la cartella di lavoro, che il
+    Dockerfile fissa a ``/app``.
+    """
+    path = (module_path or Path(__file__)).resolve()
+    if any(parent.name == "site-packages" for parent in path.parents):
+        return (working_dir or Path.cwd()).resolve()
+    return path.parents[3]
+
+
+BACKEND_ROOT = _backend_root()
 DEFAULT_FRONTEND_DIST_PATH = (
     BACKEND_ROOT.parent / "TESI-Vision_Caption_Client" / "dist"
 )
