@@ -10,6 +10,7 @@ from vision_caption.infrastructure.server.research import (
     app_version,
     router as research_router,
 )
+from vision_caption.infrastructure.server.modes import router as modes_router
 
 # Import dei componenti di dominio e porte
 from vision_caption.core.domain.sceneAnalysisResult import SceneAnalysisResult
@@ -183,6 +184,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         for profile in sorted(profiles.values(), key=lambda item: item.id)
     ]
     app.state.available_modes = available_modes
+    app.state.can_create_modes = settings.server.mode_creation_enabled
 
     # Le funzioni pensate per lo studio (memoria di ciò che è già stato
     # descritto, filtro delle foto mosse, simboli letti a parole, gesto di
@@ -588,6 +590,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     # Registriamo le rotte del websocket
     app.include_router(ws_router)
     app.include_router(research_router)
+    app.include_router(modes_router)
 
     # Health check
     @app.get("/health")

@@ -69,6 +69,12 @@ class ServerSettings(SettingsModel):
     websocket_drain_timeout_seconds: float = Field(default=0.005, ge=0.0)
     frontend_dist_path: Path = DEFAULT_FRONTEND_DIST_PATH
     profiles_dir: Path = DEFAULT_PROFILES_DIR
+    # Creare una modalità costa una chiamata a un modello grande e scrive un
+    # file: se il server è pubblico dietro un tunnel, un endpoint aperto che
+    # fa entrambe le cose è un invito. Si accende a mano, da chi sa dove sta
+    # esposto il server.
+    mode_creation_enabled: bool = False
+    mode_creation_cooldown_seconds: float = Field(default=60.0, ge=0.0)
     log_dir: Path = Path("logs")
     log_level: str = "DEBUG"
     auto_input_fps: float = Field(default=2.0, gt=0.0)
@@ -420,6 +426,10 @@ class AppSettings(SettingsModel):
                 ),
                 frontend_dist_path=resolve_backend_path(
                     value("FRONTEND_DIST_PATH", DEFAULT_FRONTEND_DIST_PATH)
+                ),
+                mode_creation_enabled=value("MODE_CREATION_ENABLED", False),
+                mode_creation_cooldown_seconds=value(
+                    "MODE_CREATION_COOLDOWN_SECONDS", 60.0
                 ),
                 log_dir=value("LOG_DIR", "logs"),
                 log_level=value("LOG_LEVEL", "DEBUG"),

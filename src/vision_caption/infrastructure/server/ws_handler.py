@@ -59,6 +59,11 @@ async def vision_websocket(websocket: WebSocket) -> None:
                 "max_in_flight": 1,
                 "max_buffered_amount_bytes": 262_144,
                 "modes": available_modes,
+                # Se questo server lascia creare modalità nuove: il pannello
+                # mostra il campo solo dove serve a qualcosa.
+                "can_create_modes": bool(
+                    getattr(websocket.app.state, "can_create_modes", False)
+                ),
             }
         )
     except WebSocketDisconnect:

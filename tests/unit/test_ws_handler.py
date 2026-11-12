@@ -263,6 +263,7 @@ async def test_websocket_advertises_flow_control_and_acks_frame() -> None:
         "max_in_flight": 1,
         "max_buffered_amount_bytes": 262_144,
         "modes": [],
+        "can_create_modes": False,
     }
     done = websocket.sent_messages[-1]
     assert done["type"] == "frame_done"
