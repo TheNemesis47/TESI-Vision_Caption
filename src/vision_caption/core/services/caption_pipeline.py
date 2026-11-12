@@ -23,6 +23,7 @@ from vision_caption.core.services.pointing.mode_gesture import ModeGestureDetect
 from vision_caption.core.services.pointing.stop_gesture import StopGestureDetector
 from vision_caption.core.services.pipeline_metrics import FrameMetrics
 from vision_caption.core.services.rate_limiter import RateLimiter
+from vision_caption.core.services.session_preferences import SessionPreferences
 from vision_caption.core.domain.frame import Frame, CaptionMode
 from vision_caption.core.domain.captionResult import CaptionResult
 from vision_caption.core.services.pointing.pointing_pipeline import (
@@ -53,6 +54,9 @@ class CaptionPipeline:
         sample_store: CaptionSampleStorePort | None = None,
         lesson_memory: LessonMemory | None = None,
         speech_text: Callable[[str], str] | None = None,
+        # Da quante parole si costruisce il filtro della voce. Serve per
+        # rifarlo quando chi ascolta cambia la verbosità a sessione aperta.
+        speech_text_factory: Callable[[int], Callable[[str], str]] | None = None,
         hand_pose_estimator: HandPoseEstimatorPort | None = None,
         stop_gesture: StopGestureDetector | None = None,
         mode_gesture: ModeGestureDetector | None = None,
@@ -70,6 +74,7 @@ class CaptionPipeline:
         self._samples = sample_store or NullCaptionSampleStore()
         self._lesson_memory = lesson_memory
         self._speech_text = speech_text
+        self._speech_text_factory = speech_text_factory
         # Il palmo aperto zittisce la voce e le due dita a V portano al
         # puntamento: per entrambi servono le mani anche in AUTO, quindi lo
         # stimatore e i gesti stanno insieme o non ci sono.
@@ -80,6 +85,36 @@ class CaptionPipeline:
         self._clock = clock
         self._last_caption = ""
         self._last_mode: CaptionMode | None = None
+        self._max_words: int | None = None
+
+    def apply_preferences(self, preferences: SessionPreferences) -> dict[str, object]:
+        """Applica le scelte arrivate dal telefono, e dice cosa è cambiato.
+
+        Quante parole e ogni quanto parlare si cambiano a sessione aperta
+        senza perdere niente: la memoria delle slide e la linea di confronto
+        dell'immagine restano quelle. La modalità no - quella è un altro
+        mondo, e chi la cambia riceve una pipeline nuova dal chiamante.
+        """
+        changed: dict[str, object] = {}
+
+        words = preferences.max_words
+        if words is not None and words != self._max_words:
+            self._max_words = words
+            if self._speech_text_factory is not None:
+                self._speech_text = self._speech_text_factory(words)
+                if self._pointing_pipeline is not None:
+                    self._pointing_pipeline.set_speech_text(self._speech_text)
+            changed["max_words"] = words
+
+        interval = preferences.min_interval_seconds
+        if (
+            interval is not None
+            and interval != self._rate_limiter.min_interval_seconds
+        ):
+            self._rate_limiter.min_interval_seconds = interval
+            changed["min_interval_seconds"] = interval
+
+        return changed
 
     async def process(
         self,

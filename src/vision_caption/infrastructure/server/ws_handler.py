@@ -11,6 +11,10 @@ from vision_caption.core.domain.pointing import HandLandmarks, PointingOverlay
 from vision_caption.core.ports.research_recorder_port import (
     NullResearchRecorder,
 )
+from vision_caption.core.services.session_preferences import (
+    SessionPreferences,
+    parse_session_preferences,
+)
 from vision_caption.infrastructure.settings import (
     AppSettings,
     PointingCorridorSettings,
@@ -36,6 +40,13 @@ async def vision_websocket(websocket: WebSocket) -> None:
         settings = AppSettings()
 
     await websocket.accept()
+    # Le modalità che questo server ha davvero caricato, profili compresi: il
+    # telefono le elenca nelle impostazioni invece di tenere un elenco suo,
+    # che sarebbe vecchio il giorno dopo.
+    available_modes = getattr(websocket.app.state, "available_modes", []) or []
+    allowed_modes = tuple(
+        mode["id"] for mode in available_modes if isinstance(mode, dict) and mode.get("id")
+    )
     try:
         await websocket.send_json(
             {
@@ -47,6 +58,7 @@ async def vision_websocket(websocket: WebSocket) -> None:
                 },
                 "max_in_flight": 1,
                 "max_buffered_amount_bytes": 262_144,
+                "modes": available_modes,
             }
         )
     except WebSocketDisconnect:
@@ -75,6 +87,10 @@ async def vision_websocket(websocket: WebSocket) -> None:
         else websocket.app.state.pipeline
     )
     current_mode: CaptionMode | None = None
+    # La modalità di descrizione scelta dal telefono. Vuota significa quella
+    # del server, che è anche quella con cui la pipeline è nata.
+    session_context = settings.vlm.context
+    applied_preferences = SessionPreferences()
     frames_processed = 0
     frames_dropped = 0
     utterances = 0
@@ -184,6 +200,52 @@ async def vision_websocket(websocket: WebSocket) -> None:
                 )
             # -------------------
             logger.debug(f"Received frame. Mode: {data['caption_mode']}")
+
+            # Le preferenze arrivano con il fotogramma e non in un messaggio
+            # a parte: lo svuotamento della coda qui sopra tiene soltanto
+            # l'ultimo messaggio, e un messaggio di impostazioni finirebbe fra
+            # quelli scartati. Ripetute su ogni fotogramma valgono anche dopo
+            # una riconnessione, e qui cambiano qualcosa solo quando cambiano.
+            preferences = parse_session_preferences(
+                data.get("preferences"), allowed_modes
+            )
+            if preferences.mode and preferences.mode != session_context:
+                if owns_pipeline:
+                    # Una modalità diversa è un altro mondo: cambia il prompt,
+                    # la parola con cui la memoria chiama le cose e la soglia
+                    # di nitidezza. Si riparte da una pipeline nuova invece di
+                    # mutare quella viva, così non resta in memoria una slide
+                    # descritta con le regole di prima.
+                    pipeline = pipeline_factory(research, context=preferences.mode)
+                    applied_preferences = SessionPreferences()
+                    research.record(
+                        "context_change",
+                        frame_id=data.get("frame_id"),
+                        previous=session_context,
+                        current=preferences.mode,
+                    )
+                    session_context = preferences.mode
+                else:
+                    logger.warning(
+                        "Modalità {} chiesta dal client ma la pipeline è "
+                        "condivisa: resta {}.",
+                        preferences.mode,
+                        session_context,
+                    )
+            if (
+                preferences.max_words != applied_preferences.max_words
+                or preferences.min_interval_seconds
+                != applied_preferences.min_interval_seconds
+            ):
+                changed = pipeline.apply_preferences(preferences)
+                applied_preferences = preferences
+                if changed:
+                    research.record(
+                        "preferences_change",
+                        frame_id=data.get("frame_id"),
+                        **changed,
+                    )
+                    logger.info("Preferenze della sessione aggiornate: {}", changed)
 
             image_bytes = base64.b64decode(data["image"])
             frame: Frame = Frame(

@@ -165,18 +165,37 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             "Modalità salvate caricate: {}", ", ".join(sorted(profiles))
         )
 
+    # Le modalità fra cui il telefono può scegliere, col nome da leggere a
+    # voce. Viaggiano nella configurazione iniziale del WebSocket: un elenco
+    # scritto a mano nel client sarebbe vecchio il giorno dopo.
+    available_modes = [
+        {"id": name, "label": label}
+        for name, label in (
+            ("lesson", "Lezione"),
+            ("museum", "Museo"),
+            ("general", "Generale"),
+        )
+    ] + [
+        {"id": profile.id, "label": profile.name}
+        for profile in sorted(profiles.values(), key=lambda item: item.id)
+    ]
+    app.state.available_modes = available_modes
+
     # Le funzioni pensate per lo studio (memoria di ciò che è già stato
     # descritto, filtro delle foto mosse, simboli letti a parole, gesto di
     # stop) valgono in ogni contesto guidato: a lezione e al museo cambiano i
-    # prompt e le parole della memoria, non la meccanica.
-    guided = settings.vlm.context != "general"
+    # prompt e le parole della memoria, non la meccanica. La decisione è
+    # dentro create_pipeline, perché ora la modalità può essere quella scelta
+    # dal telefono e non più soltanto quella dell'avvio.
 
-    
     if use_mocks:
         logger.info("Initializing server in MOCK MODE (no external dependencies needed)...")
-        scene_detector = MockSceneDetector()
-        caption_generator = MockCaptionGenerator()
-        pointing_caption_generator = MockPointingCaptionGenerator()
+        def make_scene_detector(context: str):
+            return MockSceneDetector()
+
+        def make_generators(context: str):
+            return MockCaptionGenerator(), MockPointingCaptionGenerator()
+
         speech_synthesizer = MockSpeechSynthesizer()
         media_pipe_settings = None
     else:
@@ -188,11 +207,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         logger.info(
             f"VLM: provider={vlm_provider}, modello={vlm_model}, "
             f"endpoint={vlm_base_url}, contesto={settings.vlm.context}"
-        )
-
-        # Inizializzazione SSIM e RF-DETR
-        ssim_detector = SsimSceneDetectorAdapter(
-            threshold=settings.auto.ssim.threshold
         )
 
         # Permettiamo di selezionare il device (cpu, cuda) per supportare hardware AMD/CPU
@@ -238,55 +252,76 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 height=settings.auto.rfdetr.warmup_height,
             )
 
-        # Rilevatore Ibrido
-        scene_detector = HybridSceneDetectorAdapter(
-            ssim_detector=ssim_detector,
-            rfdetr_detector=rfdetr_detector,
-            # A lezione la slide cambia mentre gli oggetti restano gli stessi
-            # (lo schermo, il docente): il filtro sulle classi tacerebbe ogni
-            # nuova slide. Decide SSIM, e la deduplica del testo fa il resto.
-            suppress_unchanged_class_counts=(
-                settings.auto.suppress_unchanged_class_counts
-                and not guided
-            ),
-            semantic_box_iou_threshold=(
-                settings.auto.semantic_box_iou_threshold
-            ),
-            min_sharpness=(
-                settings.auto.lesson_min_sharpness
-                if guided and settings.auto.lesson_min_sharpness > 0
-                else None
-            ),
-        )
+        # Il rilevatore nasce per sessione, non all'avvio: dentro ha la
+        # linea di confronto dell'immagine precedente e le classi già
+        # annunciate, cioè la memoria di *quella* ripresa. Condividerlo
+        # significherebbe che due telefoni collegati insieme si scambiano la
+        # scena. Il modello RF-DETR, che è la parte costosa, resta uno solo.
+        def make_scene_detector(context: str):
+            guided_context = context != "general"
+            return HybridSceneDetectorAdapter(
+                ssim_detector=SsimSceneDetectorAdapter(
+                    threshold=settings.auto.ssim.threshold
+                ),
+                rfdetr_detector=rfdetr_detector,
+                # A lezione la slide cambia mentre gli oggetti restano gli
+                # stessi (lo schermo, il docente): il filtro sulle classi
+                # tacerebbe ogni nuova slide. Decide SSIM, e la deduplica del
+                # testo fa il resto.
+                suppress_unchanged_class_counts=(
+                    settings.auto.suppress_unchanged_class_counts
+                    and not guided_context
+                ),
+                semantic_box_iou_threshold=(
+                    settings.auto.semantic_box_iou_threshold
+                ),
+                min_sharpness=(
+                    settings.auto.lesson_min_sharpness
+                    if guided_context and settings.auto.lesson_min_sharpness > 0
+                    else None
+                ),
+            )
         
-        # Il generatore parla l'API chat/completions di OpenAI, che vale sia per
-        # OpenRouter sia per un Ollama in rete locale: cambia solo l'endpoint.
-        caption_generator = OpenRouterCaptionGenerator(
-            api_key=settings.vlm.api_key,
-            model_name=vlm_model,
-            base_url=vlm_base_url,
-            max_tokens=settings.auto.vlm.max_output_tokens,
-            temperature=settings.auto.vlm.temperature,
-            timeout_seconds=settings.auto.vlm.http_timeout_seconds,
-            prompt=auto_prompt(settings.vlm.context),
-        )
+        # I generatori parlano l'API chat/completions di OpenAI, che vale sia
+        # per OpenRouter sia per un Ollama in rete locale: cambia solo
+        # l'endpoint. Dentro hanno solo configurazione - nessuna connessione
+        # aperta, nessun peso caricato - quindi uno per sessione costa niente,
+        # e il prompt può essere quello della modalità che ha scelto chi
+        # ascolta invece di quello deciso all'avvio per tutti.
+        def make_generators(context: str):
+            return (
+                OpenRouterCaptionGenerator(
+                    api_key=settings.vlm.api_key,
+                    model_name=vlm_model,
+                    base_url=vlm_base_url,
+                    max_tokens=settings.auto.vlm.max_output_tokens,
+                    temperature=settings.auto.vlm.temperature,
+                    timeout_seconds=settings.auto.vlm.http_timeout_seconds,
+                    prompt=auto_prompt(context),
+                ),
+                OpenRouterPointingCaptionGenerator(
+                    api_key=settings.vlm.api_key,
+                    model_name=vlm_model,
+                    base_url=vlm_base_url,
+                    timeout_seconds=settings.pointing.vlm.timeout_seconds,
+                    max_tokens=settings.pointing.vlm.max_output_tokens,
+                    temperature=settings.pointing.vlm.temperature,
+                    context=context,
+                    json_mode=vlm_provider == "openrouter",
+                    retry_empty_response=(
+                        settings.pointing.vlm.retry_empty_response
+                    ),
+                ),
+            )
+
         if vlm_provider == "local" and settings.vlm.warmup_timeout_seconds > 0:
             logger.info(
                 f"Carico il modello visivo {vlm_model}: al primo avvio può "
                 "richiedere qualche minuto..."
             )
-            caption_generator.warm_up(settings.vlm.warmup_timeout_seconds)
-        pointing_caption_generator = OpenRouterPointingCaptionGenerator(
-            api_key=settings.vlm.api_key,
-            model_name=vlm_model,
-            base_url=vlm_base_url,
-            timeout_seconds=settings.pointing.vlm.timeout_seconds,
-            max_tokens=settings.pointing.vlm.max_output_tokens,
-            temperature=settings.pointing.vlm.temperature,
-            context=settings.vlm.context,
-            json_mode=vlm_provider == "openrouter",
-            retry_empty_response=settings.pointing.vlm.retry_empty_response,
-        )
+            make_generators(settings.vlm.context)[0].warm_up(
+                settings.vlm.warmup_timeout_seconds
+            )
         media_pipe_settings = MediaPipeHandPoseSettings(
             model_path=settings.pointing.media_pipe.model_path,
             inference_max_side=settings.pointing.media_pipe.inference_max_side,
@@ -417,7 +452,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     def create_pipeline(
         research_recorder: ResearchRecorderPort | None = None,
+        context: str | None = None,
     ) -> CaptionPipeline:
+        """Una pipeline per connessione, nella modalità che le serve.
+
+        La modalità non si cambia dentro una pipeline viva: cambia il prompt,
+        la parola con cui la memoria chiama le cose, il filtro sulle classi e
+        la soglia di nitidezza. Chi la cambia riceve una pipeline nuova, e
+        quello che era stato descritto nel mondo di prima resta lì.
+        """
+        context = context or settings.vlm.context
+        guided_context = context != "general"
         sample_store = create_sample_store(research_recorder)
         # Una memoria per connessione, condivisa fra AUTO e POINTING: le
         # slide di uno studente non finiscono nel contesto di un altro, e il
@@ -426,14 +471,21 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             LessonMemory(
                 max_notes=settings.auto.lesson_memory_slides,
                 max_idle_seconds=settings.auto.lesson_memory_idle_seconds,
-                item=_memory_item(settings.vlm.context, profiles),
+                item=_memory_item(context, profiles),
             )
-            if guided and settings.auto.lesson_memory_slides > 0
+            if guided_context and settings.auto.lesson_memory_slides > 0
             else None
         )
+        # Quante parole è una scelta di chi ascolta: la fabbrica resta a
+        # disposizione della pipeline, che rifà il filtro quando la scelta
+        # cambia a sessione aperta.
+        speech_text_factory = lesson_speech if guided_context else None
         speech_text = (
-            lesson_speech(settings.auto.lesson_max_words) if guided else None
+            lesson_speech(settings.auto.lesson_max_words)
+            if guided_context
+            else None
         )
+        caption_generator, pointing_caption_generator = make_generators(context)
         if use_mocks:
             hand_pose_estimator = MockHandPoseEstimator()
         else:
@@ -479,7 +531,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             mode_gesture=mode_gesture,
         )
         return CaptionPipeline(
-            scene_detector=scene_detector,
+            scene_detector=make_scene_detector(context),
             caption_generator=caption_generator,
             speech_synthesizer=speech_synthesizer,
             rate_limiter=RateLimiter(
@@ -497,6 +549,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             sample_store=sample_store,
             lesson_memory=lesson_memory,
             speech_text=speech_text,
+            speech_text_factory=speech_text_factory,
             # Lo stesso stimatore delle mani del puntamento: MediaPipe vuole
             # tempi crescenti, e i frame di una connessione arrivano in fila.
             hand_pose_estimator=hand_pose_estimator,
@@ -506,7 +559,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                         hold_seconds=settings.auto.lesson_stop_hold_seconds,
                     )
                 )
-                if guided and settings.auto.lesson_stop_gesture
+                if guided_context and settings.auto.lesson_stop_gesture
                 else None
             ),
             mode_gesture=mode_gesture,

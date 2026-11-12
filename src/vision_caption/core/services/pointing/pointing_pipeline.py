@@ -223,6 +223,15 @@ class PointingPipeline:
         self._mode_gesture = mode_gesture
         self._previous_pose_timestamp: float | None = None
 
+    def set_speech_text(self, speech_text: Callable[[str], str] | None) -> None:
+        """Il filtro della voce cambia quando chi ascolta cambia verbosità.
+
+        Vale anche qui e non solo in automatico: la frase letta su un oggetto
+        indicato segue le stesse regole di quella di una slide, e trovarne una
+        lunga e una corta nella stessa sessione sarebbe incoerente.
+        """
+        self._speech_text = speech_text
+
     async def process(
         self,
         frame: Frame,

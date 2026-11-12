@@ -262,6 +262,7 @@ async def test_websocket_advertises_flow_control_and_acks_frame() -> None:
         "fps": {"AUTO": 2.0, "POINTING": 10.0},
         "max_in_flight": 1,
         "max_buffered_amount_bytes": 262_144,
+        "modes": [],
     }
     done = websocket.sent_messages[-1]
     assert done["type"] == "frame_done"
@@ -309,3 +310,182 @@ async def test_websocket_tells_the_phone_to_change_mode_after_the_gesture() -> N
     # Il telefono deve anche sapere a che ritmo mandare i frame della nuova
     # modalità: POINTING vuole dieci al secondo, AUTO due.
     assert switch["min_frame_interval_ms"] == 100
+
+
+# --------------------------------------------------------------- preferenze
+
+
+class PreferencePipeline(FakePipeline):
+    """Una pipeline che ricorda cosa le è stato chiesto di cambiare."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.applied: list[object] = []
+
+    def apply_preferences(self, preferences):
+        self.applied.append(preferences)
+        return {
+            key: value
+            for key, value in (
+                ("max_words", preferences.max_words),
+                ("min_interval_seconds", preferences.min_interval_seconds),
+            )
+            if value is not None
+        }
+
+    async def process(self, frame, **_kwargs):
+        if False:
+            yield None
+
+
+class PreferenceWebSocket:
+    """Due fotogrammi con le stesse preferenze, poi la chiusura."""
+
+    def __init__(
+        self,
+        pipeline: FakePipeline,
+        preferences: dict | None,
+        *,
+        modes: list[dict] | None = None,
+        second_preferences: dict | None = None,
+        factory=None,
+    ) -> None:
+        self.accepted = False
+        self.sent_messages: list[dict] = []
+        self._calls = 0
+        self._preferences = preferences
+        self._second = second_preferences if second_preferences is not None else preferences
+        self.app = SimpleNamespace(
+            state=SimpleNamespace(
+                pipeline_factory=factory or (lambda _research, context=None: pipeline),
+                settings=AppSettings(),
+                available_modes=modes if modes is not None else [],
+            )
+        )
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    def _frame(self, frame_id: int, preferences: dict | None) -> dict:
+        frame = {
+            "frame_id": frame_id,
+            "image": base64.b64encode(b"jpeg").decode("ascii"),
+            "caption_mode": "AUTO",
+            "pointing_coordinates": None,
+        }
+        if preferences is not None:
+            frame["preferences"] = preferences
+        return frame
+
+    async def receive_json(self):
+        self._calls += 1
+        if self._calls == 1:
+            return self._frame(1, self._preferences)
+        if self._calls == 2:
+            raise asyncio.TimeoutError()
+        if self._calls == 3:
+            return self._frame(2, self._second)
+        if self._calls == 4:
+            raise asyncio.TimeoutError()
+        raise WebSocketDisconnect()
+
+    async def send_json(self, message: dict) -> None:
+        self.sent_messages.append(message)
+
+
+@pytest.mark.asyncio
+async def test_le_modalita_del_server_arrivano_al_telefono() -> None:
+    modes = [{"id": "lesson", "label": "Lezione"}]
+    websocket = PreferenceWebSocket(PreferencePipeline(), None, modes=modes)
+
+    await vision_websocket(websocket)
+
+    # Un elenco scritto a mano nel client sarebbe vecchio il giorno dopo.
+    assert websocket.sent_messages[0]["modes"] == modes
+
+
+@pytest.mark.asyncio
+async def test_le_preferenze_del_fotogramma_arrivano_alla_pipeline() -> None:
+    pipeline = PreferencePipeline()
+    websocket = PreferenceWebSocket(
+        pipeline, {"max_words": 25, "min_interval_seconds": 20}
+    )
+
+    await vision_websocket(websocket)
+
+    assert [
+        (item.max_words, item.min_interval_seconds) for item in pipeline.applied
+    ] == [(25, 20.0)]
+
+
+@pytest.mark.asyncio
+async def test_le_stesse_preferenze_su_ogni_fotogramma_non_rifanno_il_lavoro() -> None:
+    # Viaggiano su ogni fotogramma per sopravvivere allo svuotamento della
+    # coda: applicarle due volte al secondo sarebbe spreco.
+    pipeline = PreferencePipeline()
+    websocket = PreferenceWebSocket(pipeline, {"max_words": 25})
+
+    await vision_websocket(websocket)
+
+    assert len(pipeline.applied) == 1
+
+
+@pytest.mark.asyncio
+async def test_una_preferenza_cambiata_a_sessione_aperta_vale_subito() -> None:
+    pipeline = PreferencePipeline()
+    websocket = PreferenceWebSocket(
+        pipeline,
+        {"max_words": 25},
+        second_preferences={"max_words": 90},
+    )
+
+    await vision_websocket(websocket)
+
+    assert [item.max_words for item in pipeline.applied] == [25, 90]
+
+
+@pytest.mark.asyncio
+async def test_cambiare_modalita_rifa_la_pipeline_invece_di_mutarla() -> None:
+    prima = PreferencePipeline()
+    dopo = PreferencePipeline()
+    costruite: list[str | None] = []
+
+    def factory(_research, context=None):
+        costruite.append(context)
+        return dopo if context == "museum" else prima
+
+    websocket = PreferenceWebSocket(
+        prima,
+        None,
+        modes=[{"id": "museum", "label": "Museo"}],
+        second_preferences={"mode": "museum"},
+        factory=factory,
+    )
+
+    await vision_websocket(websocket)
+
+    # Una modalità diversa è un altro mondo: la memoria di ciò che era stato
+    # descritto con le regole di prima non deve sopravvivere.
+    assert costruite == [None, "museum"]
+
+
+@pytest.mark.asyncio
+async def test_una_modalita_che_il_server_non_ha_viene_ignorata() -> None:
+    pipeline = PreferencePipeline()
+    costruite: list[str | None] = []
+
+    def factory(_research, context=None):
+        costruite.append(context)
+        return pipeline
+
+    websocket = PreferenceWebSocket(
+        pipeline,
+        {"mode": "pescheria"},
+        modes=[{"id": "lesson", "label": "Lezione"}],
+        factory=factory,
+    )
+
+    await vision_websocket(websocket)
+
+    # Il telefono può avere un elenco più vecchio: la sessione continua.
+    assert costruite == [None]
