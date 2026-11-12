@@ -42,6 +42,11 @@ services:
       # Il checkpoint RF-DETR adattato: sta fuori dall'immagine perché pesa e
       # perché è materiale di chi lo ha addestrato.
       - ./models:/app/models:ro
+      # Le modalità descritte a parole: nascono dopo il deploy, quindi
+      # stanno fuori dall'immagine. Senza questo collegamento il
+      # contenitore non troverebbe /app/profili e resterebbero soltanto
+      # le modalità scritte nel codice.
+      - ./profili:/app/profili:ro
       # I log, compresi quelli di ricerca in logs/research, e le immagini di
       # debug del puntamento sopravvivono a un aggiornamento del contenitore.
       # Di base stanno in volumi con nome, che ereditano i permessi

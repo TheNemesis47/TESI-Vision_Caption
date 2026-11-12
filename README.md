@@ -400,7 +400,9 @@ Il risultato è un JSON di dieci righe in `profili/`, che si corregge a mano
 senza riscrivere un prompt. `profili/supermercato.json` è l'esempio incluso.
 I file non validi vengono segnalati e saltati all'avvio, e un
 `CAPTION_CONTEXT` che non esiste ferma il server dicendo quali modalità ci
-sono.
+sono. Con Docker la cartella è collegata al contenitore dal `compose.yaml`:
+una modalità creata dopo il deploy basta salvarla in `profili/` e riavviare
+il server, senza ricostruire l'immagine.
 
 `scripts/slide_prova.html` contiene sette slide di prova (titolo, formule,
 grafico a linee, a barre, parabola, tabella, schema) da proiettare a schermo
